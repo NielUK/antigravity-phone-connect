@@ -1054,12 +1054,17 @@ chatContainer.addEventListener('click', async (e) => {
 
         // Determine which occurrence of this text the user tapped
         // This handles multiple Thought blocks with identical labels
-        const allMatching = chatContainer.querySelectorAll(target.tagName.toLowerCase());
+        const allElements = chatContainer.querySelectorAll(target.tagName.toLowerCase());
         let tapIndex = 0;
-        for (let i = 0; i < allMatching.length; i++) {
-            const t = (allMatching[i].innerText || '').split('\n')[0].trim();
-            if (t === firstLine) {
-                if (allMatching[i] === target || target.contains(allMatching[i]) || allMatching[i].contains(target)) {
+        for (let i = 0; i < allElements.length; i++) {
+            const el = allElements[i];
+            const elText = el.innerText || '';
+            const elFirstLine = elText.split('\n')[0].trim();
+            
+            // Only count if it looks like a thought toggle and matches the first line exactly
+            if (/Thought|Thinking/i.test(elText) && elText.length < 500 && elFirstLine === firstLine) {
+                // If this is our target (or contains it), we've found the correct index
+                if (el === target || el.contains(target)) {
                     break;
                 }
                 tapIndex++;
@@ -1100,14 +1105,22 @@ chatContainer.addEventListener('click', async (e) => {
             btn.style.opacity = '0.5';
             setTimeout(() => btn.style.opacity = '1', 300);
 
+            // Determine which occurrence of this button text the user tapped
+            const label = isRun ? 'Run' : 'Reject';
+            const allButtons = Array.from(chatContainer.querySelectorAll('button'));
+            
+            // Filter to only those that match our specific label (to handle multiple commands)
+            const matchingButtons = allButtons.filter(b => (b.innerText || '').includes(label));
+            const btnIndex = matchingButtons.indexOf(btn);
+
             try {
                 await fetchWithAuth('/remote-click', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         selector: 'button',
-                        index: 0,
-                        textContent: isRun ? 'Run' : 'Reject'
+                        index: btnIndex >= 0 ? btnIndex : 0,
+                        textContent: label
                     })
                 });
                 setTimeout(loadSnapshot, 500);

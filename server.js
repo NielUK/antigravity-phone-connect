@@ -578,26 +578,42 @@ async function stopGeneration(cdp) {
 
 // Click Element (Remote)
 async function clickElement(cdp, { selector, index, textContent }) {
+    const safeText = JSON.stringify(textContent || '');
+
     const EXP = `(async () => {
         try {
-            // Strategy: Find all elements matching the selector
-            // If textContent is provided, filter by that too for safety
-            let elements = Array.from(document.querySelectorAll('${selector}'));
+            // Priority: Search inside the chat container first for better accuracy
+            const root = document.getElementById('conversation') || document.getElementById('chat') || document.getElementById('cascade') || document;
             
-            if ('${textContent}') {
-                elements = elements.filter(el => el.textContent.includes('${textContent}'));
+            // Strategy: Find all elements matching the selector
+            let elements = Array.from(root.querySelectorAll('${selector}'));
+            
+            const filterText = ${safeText};
+            if (filterText) {
+                elements = elements.filter(el => {
+                    const txt = (el.innerText || el.textContent || '').trim();
+                    const firstLine = txt.split('\\n')[0].trim();
+                    // Match if first line matches (thought blocks) or if it contains the label (buttons)
+                    return firstLine === filterText || txt.includes(filterText);
+                });
+                
+                // CRITICAL: If elements are nested (e.g. <div><span>Text</span></div>), 
+                // both will match. We only want the most specific (inner-most) one.
+                elements = elements.filter(el => {
+                    return !elements.some(other => other !== el && el.contains(other));
+                });
             }
 
             const target = elements[${index}];
 
             if (target) {
+                // Focus and Click
+                if (target.focus) target.focus();
                 target.click();
-                // Also try clicking the parent if the target is just a label
-                // target.parentElement?.click(); 
-                return { success: true };
+                return { success: true, found: elements.length, indexUsed: ${index} };
             }
             
-            return { error: 'Element not found at index ${index}' };
+            return { error: 'Element not found at index ' + ${index} + ' among ' + elements.length + ' matches' };
         } catch(e) {
             return { error: e.toString() };
         }
@@ -612,9 +628,10 @@ async function clickElement(cdp, { selector, index, textContent }) {
                 contextId: ctx.id
             });
             if (res.result?.value?.success) return res.result.value;
+            // If we found it but click didn't return success (unlikely with this script), continue to next context
         } catch (e) { }
     }
-    return { error: 'Click failed in all contexts' };
+    return { error: 'Click failed in all contexts or element not found at index' };
 }
 
 // Remote scroll - sync phone scroll to desktop
