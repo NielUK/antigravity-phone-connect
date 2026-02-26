@@ -202,7 +202,7 @@ async function connectCDP(url) {
 
 // Capture chat snapshot
 async function captureSnapshot(cdp) {
-    const CAPTURE_SCRIPT = \(async () => {`
+    const CAPTURE_SCRIPT = `(async () => {
         const cascade = document.getElementById('conversation') || document.getElementById('chat') || document.getElementById('cascade');
         if (!cascade) {
             // Debug info
@@ -289,6 +289,39 @@ async function captureSnapshot(cdp) {
             }
         });
         await Promise.all(promises);
+
+        // Fix inline file references: Antigravity nests <div> elements inside
+        // <span> and <p> tags (e.g. file-type icons). Browsers auto-close <p> and
+        // <span> when they encounter a <div>, causing unwanted line breaks.
+        // Solution: Convert any <div> inside an inline parent to a <span>.
+        try {
+            const inlineTags = new Set(['SPAN', 'P', 'A', 'LABEL', 'EM', 'STRONG', 'CODE']);
+            const allDivs = Array.from(clone.querySelectorAll('div'));
+            for (const div of allDivs) {
+                try {
+                    if (!div.parentNode) continue;
+                    const parent = div.parentElement;
+                    if (!parent) continue;
+                    
+                    const parentIsInline = inlineTags.has(parent.tagName) || 
+                        (parent.className && (parent.className.includes('inline-flex') || parent.className.includes('inline-block')));
+                        
+                    if (parentIsInline) {
+                        const span = document.createElement('span');
+                        // MOVE children instead of copying (prevents orphaning nested divs)
+                        while (div.firstChild) {
+                            span.appendChild(div.firstChild);
+                        }
+                        if (div.className) span.className = div.className;
+                        if (div.getAttribute('style')) span.setAttribute('style', div.getAttribute('style'));
+                        span.style.display = 'inline-flex';
+                        span.style.alignItems = 'center';
+                        span.style.verticalAlign = 'middle';
+                        div.replaceWith(span);
+                    }
+                } catch(e) {}
+            }
+        } catch(e) {}
         
         const html = clone.outerHTML;
         

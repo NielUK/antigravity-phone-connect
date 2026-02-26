@@ -268,6 +268,22 @@ async function loadSnapshot() {
             '    display: none !important;\n' +
             '}\n' +
             '\n' +
+            '/* Override Tailwind default block display for embedded file icons */\n' +
+            'img, svg {\n' +
+            '    display: inline !important;\n' +
+            '    vertical-align: middle !important;\n' +
+            '}\n' +
+            '/* Force file-reference wrappers (icon + filename) to stay inline */\n' +
+            'div:has(> img[src^="data:"]), div:has(> img[alt]), span:has(> img) {\n' +
+            '    display: inline !important;\n' +
+            '    vertical-align: middle !important;\n' +
+            '}\n' +
+            '/* Inline-flex containers from Antigravity (e.g. file mentions) */\n' +
+            '[class*="inline-flex"], [class*="inline-block"], [class*="items-center"]:has(img) {\n' +
+            '    display: inline-flex !important;\n' +
+            '    vertical-align: middle !important;\n' +
+            '}\n' +
+            '\n' +
             '/* Fix Inline Code - Ultra-compact */\n' +
             ':not(pre) > code {\n' +
             '    padding: 0px 2px !important;\n' +
@@ -785,13 +801,13 @@ async function showChatHistory() {
     try {
         const res = await fetchWithAuth('/chat-history');
         const data = await res.json();
-        
+
         if (data.error) {
             historyList.innerHTML = `
                 <div style="padding: 40px 20px; text-align: center; color: white;">
                     <div style="font-size: 24px; margin-bottom: 10px;">⚠️</div>
                     <div style="font-weight: 500; margin-bottom: 5px;">Error loading history</div>
-                    <div style="font-size: 13px; opacity: 0.7;">\${data.error}</div>
+                    <div style="font-size: 13px; opacity: 0.7;">${data.error}</div>
                     <br>
                     <div class="history-item new-chat-item" onclick="hideChatHistory(); startNewChat();" style="justify-content: center; background: var(--accent); color: white; border:none;">
                         Start New Conversation
@@ -826,13 +842,13 @@ async function showChatHistory() {
         chats.forEach(chat => {
             const safeTitle = chat.title.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
             html += `
-                <div class="history-item" onclick="hideChatHistory(); selectChat('\${safeTitle}');">
+                <div class="history-item" onclick="hideChatHistory(); selectChat('${safeTitle}');">
                     <span class="history-item-icon">💬</span>
-                    <span class="history-item-title">\${escapeHtml(chat.title)}</span>
+                    <span class="history-item-title">${escapeHtml(chat.title)}</span>
                 </div>
             `;
         });
-        
+
         historyList.innerHTML = html;
 
     } catch (e) {
