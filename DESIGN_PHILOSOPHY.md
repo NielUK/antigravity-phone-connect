@@ -41,6 +41,7 @@ The mobile UI now features a **Premium Full-Screen History Layer**. This design 
 - **The "Bathroom" Use Case**: Optimized for quick checking of status while away from the desk.
 - **Thought Expansion**: The generation process often "hides" the reasoning. We added remote-click relay specifically so you can "peek" into the AI's internal thoughts from your phone - both expanding AND collapsing.
 - **Remote Command Actions**: When Antigravity proposes a terminal command, the "Run", "Reject", and "Ask every time / Always Run" buttons are now tappable from mobile. This eliminates the need to walk back to your desk just to approve or reject a single command — the **"bathroom use case"** taken to its logical conclusion.
+- **Quick Actions (Prompt Pills)**: Reduces the friction of common repetitive interactions on mobile. One-tap actions like "Continue", "Fix Bugs", or "Explain this code" are instantly relayed up to the Desktop IDE with no manual typing required.
 - **Bi-directional Sync**: If you change the model on your Desktop, your phone updates automatically. The goal is for both devices to feel like parts of the same "brain".
 - **🔒 Secure Connection**: HTTPS support removes the browser warning icon, making the experience feel more professional and trustworthy.
 
