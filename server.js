@@ -1198,6 +1198,32 @@ async function selectChat(cdp, chatTitle) {
     return { error: 'Context failed' };
 }
 
+// Close History Panel (Escape)
+async function closeHistory(cdp) {
+    const EXP = `(async () => {
+        try {
+            document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true }));
+            document.dispatchEvent(new KeyboardEvent('keyup',   { key: 'Escape', code: 'Escape', bubbles: true }));
+            return { success: true };
+        } catch(e) {
+            return { error: e.toString() };
+        }
+    })()`;
+
+    for (const ctx of cdp.contexts) {
+        try {
+            const res = await cdp.call("Runtime.evaluate", {
+                expression: EXP,
+                returnByValue: true,
+                awaitPromise: true,
+                contextId: ctx.id
+            });
+            if (res.result?.value?.success) return res.result.value;
+        } catch (e) { }
+    }
+    return { error: 'Failed to close history panel' };
+}
+
 // Check if a chat is currently open (has cascade element)
 async function hasChatOpen(cdp) {
     const EXP = `(() => {
@@ -1953,6 +1979,13 @@ async function main() {
             if (!title) return res.status(400).json({ error: 'Chat title required' });
             if (!cdpConnection) return res.status(503).json({ error: 'CDP disconnected' });
             const result = await selectChat(cdpConnection, title);
+            res.json(result);
+        });
+
+        // Close Chat History
+        app.post('/close-history', async (req, res) => {
+            if (!cdpConnection) return res.status(503).json({ error: 'CDP disconnected' });
+            const result = await closeHistory(cdpConnection);
             res.json(result);
         });
 

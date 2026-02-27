@@ -761,7 +761,7 @@ textarea::-webkit-scrollbar {
     background: var(--bg-panel);
     border: 1px solid rgba(255, 255, 255, 0.05);
     border-radius: 14px;
-    padding: 16px;
+    padding: 8px 10px;
     display: flex;
     align-items: center;
     gap: 16px;
@@ -831,7 +831,7 @@ textarea::-webkit-scrollbar {
 .history-spinner {
     width: 40px;
     height: 40px;
-    border: 3px solid rgba(255,255,255,0.05);
+    border: 3px solid rgba(255, 255, 255, 0.05);
     border-top-color: var(--accent);
     border-radius: 50%;
     animation: spin 0.8s linear infinite;

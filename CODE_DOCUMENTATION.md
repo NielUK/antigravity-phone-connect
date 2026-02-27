@@ -65,6 +65,7 @@ graph TD
 | `startNewChat()` | Triggers the "New Chat" action on Desktop. |
 | `getChatHistory()` | Strictly scopes the DOM to the "Select a conversation" pop-up container. This accurately scrapes conversation titles while explicitly filtering out background agent logs or source filenames that might otherwise contaminate the history list. |
 | `selectChat()` | Switches the desktop session to a specific conversation title. |
+| `closeHistory()` | Simulates an "Escape" keypress on the desktop via CDP to dismiss the history panel. |
 | `hasChatOpen()` | Verifies if the editor and chat container are currently rendered. |
 | `gracefulShutdown()` | Handles SIGINT/SIGTERM for clean server shutdown. |
 | `createServer()` | Creates Express app with automatic HTTP/HTTPS detection and Auth middleware. |
@@ -86,6 +87,7 @@ graph TD
 | `/new-chat` | POST | Starts a new chat session. |
 | `/chat-history`| GET | Returns list of recently captured conversation titles. |
 | `/select-chat` | POST | Switches the desktop session to a selected conversation. |
+| `/close-history` | POST | Programmatically closes the desktop history panel by dispatching an Escape keypress. |
 | `/chat-status` | GET | Returns status of the chat container and editor. |
 | `/remote-click` | POST | Triggers a click on Desktop. The payload includes the tag type, clean text, and a calculated occurrence index to ensure the correct element is triggered among identical peers. |
 | `/remote-scroll` | POST | Syncs phone scroll position to Desktop Antigravity. |

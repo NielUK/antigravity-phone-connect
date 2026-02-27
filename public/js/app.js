@@ -891,6 +891,12 @@ async function showChatHistory() {
 
 function hideChatHistory() {
     historyLayer.classList.remove('show');
+    // Send an escape key to Antigravity to close the History panel
+    try {
+        fetchWithAuth('/close-history', { method: 'POST' });
+    } catch (e) {
+        console.error('Failed to close history on desktop:', e);
+    }
 }
 
 historyBtn.addEventListener('click', showChatHistory);

@@ -26,7 +26,7 @@ Antigravity themes have thousands of CSS variables. Instead of trying to mirror 
 - **LAN Constraint & Global Freedom**: By default, it stays on LAN for privacy. However, the `_web` mode introduces secure tunneling for global access, prioritizing **Freedom of Movement** without sacrificing security.
 
 ### 5. Mobile-First Navigation (History Management)
-The mobile UI now features a **Premium Full-Screen History Layer**. This design choice reflects the reality that mobile screens are too small for sidebar navigation. By utilizing a sleek modal-layered approach—complete with elevated cards, gradient icons, and responsive micro-animations—we provide high-density information (recent chats) as a purely native mobile experience without cluttering the primary viewing area.
+The mobile UI now features a **Premium Full-Screen History Layer**. This design choice reflects the reality that mobile screens are too small for sidebar navigation. By utilizing a sleek modal-layered approach—complete with elevated cards, gradient icons, and responsive micro-animations—we provide high-density information (recent chats) as a purely native mobile experience without cluttering the primary viewing area. We also strictly enforce bi-directional synchronization by executing a programmatic Escape keypress on the desktop when the history layer is closed on the phone, preventing stale UI popups when the developer returns to their screen.
 
 > 📚 For browser warning bypass instructions and security recommendations, see [SECURITY.md](SECURITY.md).
 
