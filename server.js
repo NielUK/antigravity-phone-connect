@@ -590,21 +590,44 @@ async function setMode(cdp, mode) {
 // Stop Generation
 async function stopGeneration(cdp) {
   const EXP = `(async () => {
-        // Look for the cancel button
-        const cancel = document.querySelector('[data-tooltip-id="input-send-button-cancel-tooltip"]');
-        if (cancel && cancel.offsetParent !== null) {
-            cancel.click();
-            return { success: true };
-        }
-        
-        // Fallback: Look for a square icon in the send button area
-        const stopBtn = document.querySelector('button svg.lucide-square')?.closest('button');
-        if (stopBtn && stopBtn.offsetParent !== null) {
-            stopBtn.click();
-            return { success: true, method: 'fallback_square' };
-        }
+        try {
+            // Strategy 1: Named tooltip ID (most reliable)
+            const byTooltip = document.querySelector('[data-tooltip-id="input-send-button-cancel-tooltip"]');
+            if (byTooltip && byTooltip.offsetParent !== null) {
+                byTooltip.click();
+                return { success: true, method: 'tooltip_id' };
+            }
 
-        return { error: 'No active generation found to stop' };
+            // Strategy 2: Square icon in send button (stop icon = lucide-square)
+            const bySquare = document.querySelector('button svg.lucide-square, button svg[class*="square"]')?.closest('button');
+            if (bySquare && bySquare.offsetParent !== null) {
+                bySquare.click();
+                return { success: true, method: 'square_icon' };
+            }
+
+            // Strategy 3: Button with aria-label containing 'stop' or 'cancel'
+            const byAria = Array.from(document.querySelectorAll('button, [role="button"]')).find(el => {
+                const label = (el.getAttribute('aria-label') || el.getAttribute('title') || '').toLowerCase();
+                return (label.includes('stop') || label.includes('cancel')) && el.offsetParent !== null;
+            });
+            if (byAria) {
+                byAria.click();
+                return { success: true, method: 'aria_label' };
+            }
+
+            // Strategy 4: Any button containing 'Stop' or 'Cancel' text at the bottom input area
+            const allBtns = Array.from(document.querySelectorAll('button'));
+            const byText = allBtns.find(btn => {
+                const txt = (btn.innerText || '').toLowerCase().trim();
+                return (txt === 'stop' || txt === 'cancel' || txt.includes('stop generation')) && btn.offsetParent !== null;
+            });
+            if (byText) {
+                byText.click();
+                return { success: true, method: 'button_text' };
+            }
+
+            return { error: 'No active generation found to stop - no stop/cancel button visible' };
+        } catch(e) { return { error: e.toString() }; }
     })()`;
 
   for (const ctx of cdp.contexts) {
@@ -615,10 +638,10 @@ async function stopGeneration(cdp) {
         awaitPromise: true,
         contextId: ctx.id,
       });
-      if (res.result?.value) return res.result.value;
+      if (res.result?.value?.success) return res.result.value;
     } catch (e) {}
   }
-  return { error: "Context failed" };
+  return { error: "Context failed - stop button not found" };
 }
 
 // Click Element (Remote)
@@ -735,36 +758,62 @@ async function remoteScroll(cdp, { scrollTop, scrollPercent }) {
 }
 
 // Toggle ITV (Interactive Toggle Extension)
+// Follows the same pattern as setMode: walks the DOM for ITV text/state then clicks it
 async function toggleITV(cdp) {
-  // Wide search: status bar items, action buttons, VS Code UI elements, any text/aria-label containing ITV
   const EXP = `(async () => {
         try {
-            function getText(el) {
-                return [el.innerText, el.textContent, el.getAttribute('aria-label'),
-                        el.getAttribute('title'), el.getAttribute('data-tooltip'),
-                        el.getAttribute('class')].filter(Boolean).join(' ').toLowerCase();
+            // STRATEGY: ITV is a VS Code extension toggle. Like the Mode button,
+            // it will have text or an icon. We search broadly.
+
+            // 1. Find any element whose leaf text, aria-label, or title mentions ITV
+            const allEls = Array.from(document.querySelectorAll('*'));
+
+            let itvEl = null;
+
+            // Primary: find a leaf node containing ITV text  
+            const leafCandidates = allEls.filter(el => {
+                if (el.children.length > 2) return false; // allow shallow containers
+                const txt = (el.innerText || el.textContent || '').trim().toUpperCase();
+                return txt === 'ITV' || txt === 'ITV: ON' || txt === 'ITV: OFF' ||
+                       txt === 'ITV ON' || txt === 'ITV OFF';
+            });
+
+            // Walk up from each candidate to find a clickable parent (like setMode does)
+            for (const el of leafCandidates) {
+                if (el.offsetParent === null) continue;
+                let current = el;
+                for (let i = 0; i < 5; i++) {
+                    if (!current) break;
+                    const style = window.getComputedStyle(current);
+                    if (style.cursor === 'pointer' || current.tagName === 'BUTTON' || current.getAttribute('role') === 'button') {
+                        itvEl = current;
+                        break;
+                    }
+                    current = current.parentElement;
+                }
+                if (itvEl) break;
             }
-            // Wide selector: buttons, roles, status bar, action items
-            const candidates = Array.from(document.querySelectorAll(
-                'button, [role="button"], [role="tab"], [role="menuitem"], ' +
-                '.statusbar-item, .action-item, .action-label, ' +
-                '[class*="itv"], [id*="itv"], [aria-label*="ITV" i], [title*="ITV" i]'
-            ));
-            let itvBtn = candidates.find(el => getText(el).includes('itv') && el.offsetParent !== null);
-            // Fallback: scan all visible leaf elements for ITV text
-            if (!itvBtn) {
-                itvBtn = Array.from(document.querySelectorAll('*')).find(el => {
-                    if (el.children.length > 3) return false;
-                    const t = (el.innerText || el.textContent || '').trim().toUpperCase();
-                    return (t === 'ITV' || t.startsWith('ITV:') || t === 'ITV ON' || t === 'ITV OFF') &&
-                           el.offsetParent !== null;
-                });
+
+            // Fallback: aria-label or title containing ITV
+            if (!itvEl) {
+                itvEl = Array.from(document.querySelectorAll('[aria-label*="ITV" i], [title*="ITV" i], [data-tooltip*="ITV" i]'))
+                    .find(el => el.offsetParent !== null);
             }
-            if (itvBtn) {
-                itvBtn.click();
-                return { success: true, element: itvBtn.tagName };
+
+            // Fallback 2: class or id containing 'itv'
+            if (!itvEl) {
+                itvEl = Array.from(document.querySelectorAll('[class*="itv"], [id*="itv"]'))
+                    .find(el => el.offsetParent !== null);
             }
-            return { error: 'ITV extension button not found on desktop' };
+
+            if (!itvEl) return { error: 'ITV button not found in Antigravity UI' };
+
+            itvEl.click();
+            return { 
+                success: true, 
+                elementTag: itvEl.tagName,
+                elementText: (itvEl.innerText || itvEl.textContent || '').trim().substring(0, 30)
+            };
         } catch(e) { return { error: e.toString() }; }
     })()`;
 
@@ -780,7 +829,7 @@ async function toggleITV(cdp) {
       if (res.result?.value?.error && !res.result.value.error.includes('not found')) return res.result.value;
     } catch (e) {}
   }
-  return { error: "ITV button not found in any context" };
+  return { error: "ITV button not found in any CDP context" };
 }
 
 // Set AI Model
@@ -1425,9 +1474,23 @@ async function getAppState(cdp) {
             state.model = modelEl.innerText.trim();
         }
 
+        // 3. Get ITV State (ON/OFF)
+        const itvEl = allEls.find(el => {
+            if (el.children.length > 2) return false;
+            const txt = (el.innerText || el.textContent || '').trim().toUpperCase();
+            return txt === 'ITV' || txt === 'ITV: ON' || txt === 'ITV: OFF' || txt === 'ITV ON' || txt === 'ITV OFF';
+        });
+        if (itvEl) {
+            const itvText = (itvEl.innerText || itvEl.textContent || '').trim().toUpperCase();
+            state.itvActive = !itvText.includes('OFF');
+            state.itvState = itvText;
+        } else {
+            state.itvActive = null; // ITV not visible / not installed
+        }
+
         return state;
     } catch (e) { return { error: e.toString() }; }
-})()`;
+})()\`;
 
   for (const ctx of cdp.contexts) {
     try {

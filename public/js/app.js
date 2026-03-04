@@ -95,6 +95,15 @@ async function fetchAppState() {
             modelText.textContent = data.model;
         }
 
+        // ITV Sync - Desktop is source of truth
+        if (data.itvActive !== null && data.itvActive !== undefined) {
+            const isOn = data.itvActive;
+            itvText.textContent = isOn ? 'ITV: ON' : 'ITV: OFF';
+            itvBtn.style.color = isOn ? 'var(--success)' : 'var(--text-muted)';
+            itvBtn.style.borderColor = isOn ? 'var(--success)' : 'var(--border)';
+            itvBtn.style.background = isOn ? 'rgba(34, 197, 94, 0.1)' : 'rgba(255, 255, 255, 0.05)';
+        }
+
         console.log('[SYNC] State refreshed from Desktop:', data);
     } catch (e) { console.error('[SYNC] Failed to sync state', e); }
 }
