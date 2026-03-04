@@ -22,10 +22,12 @@
 Start Antigravity with the remote debugging port enabled:
 
 **Option A: Using Right-Click Context Menu (Recommended)**
+
 - Run `install_context_menu.bat` (Windows) or `./install_context_menu.sh` (Linux) and select **[1] Install**
 - Then right-click any project folder → **"Open with Antigravity (Debug)"** (now with visual icons!)
 
 **Option B: Manual Command**
+
 ```bash
 antigravity . --remote-debugging-port=9000
 ```
@@ -40,21 +42,24 @@ antigravity . --remote-debugging-port=9000
 ### Step 3: Run the Server
 
 **Windows:**
+
 ```
 Double-click start_ag_phone_connect.bat
 ```
 
 **macOS / Linux:**
+
 ```bash
 chmod +x start_ag_phone_connect.sh   # First time only
 ./start_ag_phone_connect.sh
 ```
 
 The script will:
+
 - Verify Node.js and Python dependencies
 - Auto-kill any existing server on port 3000
 - **Wait for Antigravity** if it's not started yet
-- Display a **QR Code** and your **Link** (e.g., `https://192.168.1.5:3000`)
+- Display a **QR Code** and your **Link** (e.g., `https://192.168.1.5:3001`)
 - Provide numbered steps for easy connection
 
 ### Step 4: Connect Your Phone (Local Wi-Fi)
@@ -70,6 +75,7 @@ The script will:
 Access your Antigravity session from **anywhere in the world** (Mobile Data, outside Wi-Fi) with secure passcode protection.
 
 ### Setup (First Time)
+
 1. **Get an ngrok Token**: Sign up for free at [ngrok.com](https://ngrok.com) and get your "Authtoken".
 2. **Automatic Configuration (Recommended)**: Simply run any launcher script. They will detect if `.env` is missing and automatically create it using `.env.example` as a template.
 3. **Manual Setup**: Alternatively, copy `.env.example` to `.env` manually and update the values:
@@ -82,18 +88,20 @@ Access your Antigravity session from **anywhere in the world** (Mobile Data, out
    NGROK_AUTHTOKEN=your_token_here
    APP_PASSWORD=your_secure_passcode
    XXX_API_KEY=your-ai-provider-key
-   PORT=3000
+   PORT=3001
    ```
 
 ### Usage
+
 - **Windows**: Run `start_ag_phone_connect_web.bat`
 - **Mac/Linux**: Run `./start_ag_phone_connect_web.sh`
 
-The script will launch the server and provide a **Public URL** (e.g., `https://abcd-123.ngrok-free.app`). 
+The script will launch the server and provide a **Public URL** (e.g., `https://abcd-123.ngrok-free.app`).
 
 **Two Ways to Connect:**
+
 1. **Magic Link (Easiest)**: Scan the **Magic QR Code** displayed in the terminal. It logs you in automatically!
-2. **Manual**: 
+2. **Manual**:
    - Open the URL on your phone.
    - Enter your `APP_PASSWORD` to log in.
 
@@ -106,20 +114,24 @@ The script will launch the server and provide a **Public URL** (e.g., `https://a
 For a secure connection without the browser warning icon:
 
 ### Option 1: Command Line
+
 ```bash
 node generate_ssl.js
 ```
+
 - Uses **OpenSSL** if available (includes your IP in certificate)
 - Falls back to **Node.js crypto** if OpenSSL not found
 - Creates certificates in `./certs/` directory
 
 ### Option 2: Web UI
+
 1. Start the server on HTTP
 2. Look for the yellow **"⚠️ Not Secure"** banner
 3. Click **"Enable HTTPS"** button
 4. Restart the server when prompted
 
 ### After Generating:
+
 1. **Restart the server** - it will automatically detect and use HTTPS.
 2. **On your phone's first visit**:
    - You'll see a security warning (normal for self-signed certs).
@@ -177,8 +189,9 @@ Since macOS requires Automator for context menu entries, follow these steps manu
 - **Smart Sync**: Bi-directional synchronization ensures your phone always shows the current Model and Mode selected on your desktop.
 - **Premium Mobile UI**: A sleek, dark-themed interface optimized for touch interaction.
 - **Context Menu Management**: Dedicated scripts to **Install, Remove, Restart, or Backup** your Right-Click integrations.
-- **Health Monitoring**: Built-in `/health` endpoint for server status checks.
-- **Graceful Shutdown**: Clean exit on Ctrl+C, closing all connections properly.
+- **Zero-Friction Magic Links (NEW!)**: Scan the QR code and jump straight into your chat. Bypasses the ngrok "Identity" and "Browser Warning" screens automatically with embedded tokens.
+- **Control Centre Integration (NEW!)**: Synchronized startup with the main Control Centre ecosystem. Port 3001 is now standard to avoid conflicts with other backend services.
+- **Smart Auth Awareness**: Automatically handles local network trust while maintaining high security for remote global access.
 - **Zero-Config**: The launch scripts handle the heavy lifting of environment setup.
 
 ---
@@ -186,6 +199,7 @@ Since macOS requires Automator for context menu entries, follow these steps manu
 ## 📂 Documentation
 
 For more technical details, check out:
+
 - [**Code Documentation**](CODE_DOCUMENTATION.md) - Architecture, Data Flow, and API.
 - [**Security Guide**](SECURITY.md) - HTTPS setup, certificate warnings, and security model.
 - [**Design Philosophy**](DESIGN_PHILOSOPHY.md) - Why it was built this way.

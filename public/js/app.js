@@ -18,6 +18,8 @@ const modalList = document.getElementById('modalList');
 const modalTitle = document.getElementById('modalTitle');
 const modeText = document.getElementById('modeText');
 const modelText = document.getElementById('modelText');
+const itvBtn = document.getElementById('itvBtn');
+const itvText = document.getElementById('itvText');
 const historyLayer = document.getElementById('historyLayer');
 const historyList = document.getElementById('historyList');
 
@@ -34,15 +36,37 @@ let chatIsOpen = true; // Track if a chat is currently open
 
 
 // --- Auth Utilities ---
+function getPasscode() {
+    // 1. Sync check URL for key/token and persist it
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlKey = urlParams.get('key') || urlParams.get('token');
+    if (urlKey) {
+        console.log('[AUTH] Magic key detected in URL, persisting...');
+        localStorage.setItem('ag_passcode', urlKey);
+        // Clean URL without reload
+        const newUrl = window.location.pathname + window.location.hash;
+        window.history.replaceState({}, '', newUrl);
+    }
+    return localStorage.getItem('ag_passcode');
+}
+
 async function fetchWithAuth(url, options = {}) {
     // Add ngrok skip warning header to all requests
     if (!options.headers) options.headers = {};
     options.headers['ngrok-skip-browser-warning'] = 'true';
+    
+    // Add Bearer Token for robust auth on mobile/ngrok (which often drop cookies)
+    const passcode = getPasscode();
+    if (passcode) {
+        options.headers['Authorization'] = `Bearer ${passcode}`;
+    }
 
     try {
         const res = await fetch(url, options);
         if (res.status === 401) {
             console.log('[AUTH] Unauthorized, redirecting to login...');
+            // We NO LONGER remove the passcode here. This prevents a single 
+            // failed background request from nuking the whole session.
             window.location.href = '/login.html';
             return new Promise(() => { }); // Halt execution
         }
@@ -133,10 +157,13 @@ const MODELS = [
 // --- WebSocket ---
 function connectWebSocket() {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    ws = new WebSocket(`${protocol}//${window.location.host}`);
+    const passcode = getPasscode();
+    const tokenQuery = passcode ? `?token=${encodeURIComponent(passcode)}` : '';
+    
+    ws = new WebSocket(`${protocol}//${window.location.host}${tokenQuery}`);
 
     ws.onopen = () => {
-        console.log('WS Connected');
+        console.log('WS Connected (Authenticated)');
         updateStatus(true);
         loadSnapshot();
     };
@@ -1012,6 +1039,39 @@ modeBtn.addEventListener('click', () => {
             modeText.textContent = currentMode;
         }
     });
+});
+
+itvBtn.addEventListener('click', async () => {
+    const isOff = itvText.textContent.includes('OFF');
+    
+    // Optimistic UI toggle
+    if (isOff) {
+        itvText.textContent = 'ITV: ON';
+        itvBtn.style.color = 'var(--success)';
+        itvBtn.style.borderColor = 'var(--success)';
+        itvBtn.style.background = 'rgba(34, 197, 94, 0.1)';
+    } else {
+        itvText.textContent = 'ITV: OFF';
+        itvBtn.style.color = 'var(--text-muted)';
+        itvBtn.style.borderColor = 'var(--border)';
+        itvBtn.style.background = 'rgba(255, 255, 255, 0.05)';
+    }
+    
+    // Call backend
+    try {
+        const res = await fetchWithAuth('/toggle-itv', { method: 'POST' });
+        const data = await res.json();
+        if (!data.success) {
+            console.warn('ITV Toggle sync failed:', data.error);
+            // We keep the optimistic UI state as it's binary toggle anyway
+        }
+    } catch (e) {
+        console.error('ITV Toggle error:', e);
+    }
+    
+    // Optional: Visual pulse
+    itvBtn.style.transform = 'scale(0.95)';
+    setTimeout(() => itvBtn.style.transform = 'scale(1)', 100);
 });
 
 modelBtn.addEventListener('click', () => {

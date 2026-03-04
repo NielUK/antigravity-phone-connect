@@ -4,107 +4,150 @@ All notable changes to **Antigravity Phone Connect** are documented here, in rev
 
 ---
 
+## v1.2.0 - Zero-Friction & CC Integration (Stable) 🚀
+
+**Release Date:** March 4, 2026
+
+### 🚀 Zero-Friction Connectivity
+
+- **Ngrok Security Bypass**: Automated the bypass of the "Identity" interstitial page. The server now injects `ngrok-skip-browser-warning` headers into all magic links and API requests, ensuring a seamless one-tap connection from any mobile device.
+- **Magic Link Auto-Config**: Magic links now automatically embed authentication tokens for both the application and the tunnel bypass, enabling a completely frictionless login experience.
+- **Smart URL Token Handling**: The client-side application now intelligently extracts and clears authentication tokens from the URL, persisting them in `localStorage` to maintain session stability even when browsing over mobile networks.
+
+### 🏗️ Control Centre Integration
+
+- **Stable Startup Registry**: Fully integrated the Phone Connect Bridge into the main Control Centre `Start_All_Services.vbs` sequence. The bridge now launches automatically in the correct order to prevent dependency race conditions.
+- **Port Conflict Resolution**: Moved the default server port from `3000` to `3001` to eliminate conflicts with the Antigravity Editor backend. All startup scripts and environment templates have been updated accordingly.
+- **Surgical Process Cleanup**: Refined the port-killing logic to only terminate specific bridge instances, preventing accidental shutdown of other backend services sharing similar environments.
+
+### ✨ UI Enhancements
+
+- **ITV: ON Toggle**: Introduced a dedicated "Interactive Toggle" (ITV) button on the mobile dashboard for faster access to advanced session controls.
+- **Improved Status Awareness**: Updated the mobile status bar with more detailed connection diagnostics and session state feedback.
+- **Wait-for-CDP Polling**: Improved the background polling logic to handle intermittent desktop service restarts more gracefully.
+
+---
+
 ## v0.2.28 - UI/UX Pro Max & The Obsidian Overhaul 💎
+
 **Release Date:** February 27, 2026
 
 ---
 
 ### ✨ The "Obsidian" Visual Overhaul
+
 - **Aesthetic Excellence**: Completely reimagined the mobile interface with a deep, "Space Black" palette and gorgeous violet-to-indigo gradients. It's our most premium-feeling update yet.
 - **Glassmorphic Prompt Area**: Refined the quick-action pills (Continue, Explain, Fix Bugs) with elegant glassmorphism effects and micro-animations. Pills now "float" and glow with subtle violet shadows when interacted with.
 - **Symmetric Controls**: Re-styled the History button to match the minimalist, icon-only design of the Refresh button for a cleaner, unified header aesthetic.
 
 ### 🚀 New Features & Deep Sync
+
 - **Explain Pill**: Added a dedicated "Explain" quick-action pill for one-tap, detailed code breakdowns.
 - **Dynamic Glows**: Interactive elements now emit a soft indigo/violet glow, matching the theme's core accent for better visual feedback.
 - **Perfect Sync (v0.2.26)**: Dismissing the mobile history layer now automatically triggers a remote "Escape" sequence to close the desktop history panel instantly.
 - **Premium History Cards (v0.2.25)**: Completely redesigned the history view with elevated, interactive cards and smooth transitions.
 
 ### 🛡️ Security & Auditing
+
 - **OWASP Security Audit**: Performed a "Paranoid Mode" security sweep across the entire codebase.
 - **Audit Logging**: Updated `SECURITY.md` with detailed findings on secrets management, injection prevention, and authentication protocols.
 - **Verified Protection**: Confirmed that the CDP injection layer remains strictly scoped and secure against XSS.
 
 ### 📚 Documentation
+
 - **Technical Sync**: Updated `CODE_DOCUMENTATION.md` and `DESIGN_PHILOSOPHY.md` to reflect the new visual architecture and human-centric design choices.
 
 ---
 
 ## v0.2.24 - Deterministic Targeting & Security Hardening 🎯
+
 **Release Date:** February 26, 2026
 
 ---
 
 ### 🚀 New Features & Precision Controls
+
 - **Deterministic Targeting Engine**: Completely solved the "Duplicate Element Mismatch" issue. Interactive elements like "Run", "Reject", and "Thought" toggles now use dynamic occurrence index tracking to ensure your tap hits the exact message you intended, even in long chat histories with many identical buttons.
 - **Leaf-Most Filtering**: Introduced a "Zero-Proxy Filter" on the server. The system now automatically identifies and targets the inner-most interactive node, preventing "Nested DOM Traps" where clicks would land on parent containers instead of the actual button.
 - **Strict Scoped Clicking**: CDP clicks are now prioritized within the active chat cascade (`#conversation`, `#cascade`), ensuring that historical buttons are matched with 100% precision while ignoring unrelated sidebar controls.
 - **Enhanced Thought Matching**: Thought toggles now use strict first-line text matching (e.g., "Thought for 2s") to reliably distinguish between multiple reasoning blocks in a single session.
 
 ### 🛡️ Security & Infrastructure
+
 - **Security Secret Externalization**: Removed hardcoded secrets for signed cookies and authentication salts. All sensitive security tokens can now be customized via `.env` to invalidate sessions or harden the server.
 - **Full Security Audit**: Conducted a formal security sweep (OWASP scope) and documented the results in `SECURITY.md`. Confirmed robust protection against XSS and CDP injection.
 - **Enhanced .env Template**: Updated `.env.example` with new optional security parameters for advanced users.
 
 ### 📚 Documentation
+
 - **Technical Deep-Dive**: Updated `CODE_DOCUMENTATION.md` with details on the new Dual-Pass targeting architecture and Leaf-Node isolation logic.
 - **Ideological Alignment**: Refined `DESIGN_PHILOSOPHY.md` to reflect the move toward "Robustness with Zero-Proxy Precision."
 
 ---
 
 ## v0.2.21 - Deep Integration & Visual Fidelity 🚀
+
 **Release Date:** February 26, 2026
 
 ---
 
 ### 🚀 New Features & Infrastructure
+
 - **Remote Command Actions**: Fully documented and stabilized support for remote "Run" and "Reject" command buttons, allowing for seamless remote code execution control.
 - **Occurrence Index Tracking**: Introduced a new tracking system for remote clicks that ensures perfectly accurate targeting in complex, repetitive UI trees (no more misclicks on identical buttons!).
 - **Mobile Chat History Integration**: Browsing and switching between past AI conversations is now fully integrated into the mobile UI.
 - **Base64 Image Fidelity**: All local SVGs and images are now automatically converted to Base64 before being served. This fixes the "broken image" issue commonly seen when accessing the server from a remote device.
 
 ### ⚡ Improvements & Fixes
+
 - **v0.2.19 - Inline File References**: Fixed a CSS rendering bug where file icons and filenames would break into multiple lines; they now render perfectly inline.
 - **v0.2.18 - XSS Hardening**: Added robust XSS protection for chat history titles in the mobile interface.
 
 ### 📚 Documentation
+
 - **v0.2.20 - Scoped Boundaries**: Documented strict scoped boundaries for DOM scraping to improve performance and prevent unintended context leakage.
 
 ---
 
-
 ## v0.2.17 - UI Polish & Model Compatibility 🌟
+
 **Release Date:** February 20, 2026
 
 ---
 
 ### 🚀 New Features & Improvements
+
 - **Glassmorphism UI**: Upgraded the quick actions and settings bars with a gorgeous new glassmorphism effect for a sleek, modern, and premium mobile experience.
 - **Latest AI Models**: Automatically updated and verified support for the latest model versions from Gemini, Claude, and OpenAI to ensure zero disruption.
 - **Improved Dark Mode Tracking**: Enhanced UI styling and state capture logic designed to provide maximum clarity and correct model detection down to the CSS layer while in dark mode.
 
 ### 📚 Documentation Updates
+
 - Updated `README.md` to showcase the new glassmorphism and model coverage features.
 - Synced `CODE_DOCUMENTATION.md` and `DESIGN_PHILOSOPHY.md` to capture recent visual overrides and DOM scraping improvements.
 
 ---
 
 ## v0.2.13 - Smart Cleanup & Reliability 🛡️ (supports latest release)
+
 **Release Date:** February 7, 2026
 
 ---
 
 ### 🚀 Performance & UI Reliability
+
 - **Aggressive DOM Cleanup**: Rewrote the snapshot capture logic to filter out more desktop-specific noise, including "Review Changes" bars, "Linked Objects," and leftover desktop input elements.
 - **Improved Model Selection**: Implemented a multi-strategy polling approach for the remote Model Selector, significantly increasing reliability when switching between Gemini, Claude, and GPT.
 - **Smart Container Detection**: The server now supports multiple chat container IDs (including legacy `#conversation` and newer `#cascade`), ensuring compatibility across various Antigravity versions.
 
 ### 📚 Documentation & Developer Experience
+
 - **Documentation Overhaul**: Major updates to `README.md`, `CODE_DOCUMENTATION.md`, and `DESIGN_PHILOSOPHY.md` to reflect the current security model and new features.
 - **Context Menu Visibility**: Added documentation for the native Windows/Linux right-click context menu installation scripts.
 - **Setup Refinement**: Clearer instructions for self-signed certificate handling and Web Mode (ngrok) configuration.
 
 ### 🐛 Bug Fixes & Refinements
+
 - **UI Overflow**: Fixed an issue where the history panel would occasionally overflow on small mobile screens.
 - **Empty State Formatting**: Corrected HTML formatting in the empty chat state component.
 - **Process Cleanup**: Enhanced the port-killing logic to handle stubborn "ghost" processes on Windows more reliably.
@@ -112,16 +155,19 @@ All notable changes to **Antigravity Phone Connect** are documented here, in rev
 ---
 
 ## v0.2.6 - Full-Screen History & Visual Upgrades 📜
+
 **Release Date:** February 1, 2026
 
 ---
 
 ### ✨ NEW: Mobile History Experience
+
 - **Full-Screen History Layer**: Replaced the cramped history view with a dedicated, high-density full-screen layer for mobile.
 - **Remote Conversation Switching**: Tap any past conversation on your phone to instantly switch the desktop session to that chat.
 - **History Icon**: A new dedicated icon in the header allows for instant access to your past chats.
 
 ### 🚀 Visual & UX Improvements
+
 - **Visual Context Menus**: Added native icons to the Windows right-click menu ("Open with Antigravity (Debug)") for a premium feel.
 - **Zero-Config Setup**: Launchers now automatically create a `.env` file from templates if it's missing.
 - **Frictionless Experience**: Improved setup guidance for first-time web access and remote configurations.
@@ -129,15 +175,18 @@ All notable changes to **Antigravity Phone Connect** are documented here, in rev
 ---
 
 ## v0.2.1 - Magic Links & Unified Launcher ✨
+
 **Release Date:** January 21, 2026
 
 ---
 
 ### ✨ NEW: Magic Link Auto-Login
+
 - **QR Code Magic**: In Web Mode, the QR code now embeds your password! Just scan it to log in instantly—no typing required.
 - **Smart Redirects**: Automatically sets your secure session cookie and seamlessly redirects you to the app interface.
 
 ### 🚀 Unified Launcher Experience
+
 - **One Script to Rule Them All**: Introduced `launcher.py`, a robust Python core that powers both Local and Web modes.
 - **Improved Local Mode**:
   - Automatically detects if you have SSL certificates and generates the correct `https://` local URL.
@@ -147,42 +196,50 @@ All notable changes to **Antigravity Phone Connect** are documented here, in rev
   - Displays clear, numbered steps for connecting on both Local and Web modes.
 
 ### 🛡️ Enhanced Troubleshooting
+
 - **Real-Time Diagnostics**: The launcher now monitors the server log in real-time.
 - **Immediate Alerts**: If the server can't find the Antigravity editor (CDP), it instantly flashes a **RED WARNING** in the terminal with specific fix instructions (e.g., "Open with Antigravity (Debug)").
 
 ### 🐛 Bug Fixes
+
 - **Socket Error**: Fixed a crash in `launcher.py` related to `socket.AF_INET` initialization.
 - **HTTPS Mismatch**: Fixed an issue where Local Mode would generate `http://` links even when the server was running securely on `https://`.
 
 ---
 
 ## v0.2.0 - Global Remote Access (Web Mode) 🌍
+
 **Release Date:** January 21, 2026
 
 ---
 
 ### ✨ NEW: World-Wide Remote Access
+
 - **Global Tunneling**: Integrated `ngrok` support via `tunnel.py` to expose the server securely to the internet.
 - **Mobile Data Support**: Access your Antigravity chat from anywhere without needing to be on the same Wi-Fi.
 - **One-Click Web Launchers**: New `start_ag_phone_connect_web.bat` and `.sh` scripts that automate server startup, tunnel creation, and passcode management.
 
 ### 🔒 Security & Authentication
+
 - **Password Protection**: Introduced a passcode system for all remote sessions.
 - **Passcode Auto-Generation**: Automatically generates a temporary 6-digit passcode if no password is set in `.env`.
 - **Conditional Auth**: Intelligently bypasses authentication for devices on the same local Wi-Fi for a seamless home experience.
 - **Secure Sessions**: Implemented signed `httpOnly` cookies for robust session management.
 
 ### 🛡️ Improved Process Management
+
 - **Aggressive Cleanup**: Launchers now forcefully kill any hidden "ghost" processes from previous messy exits, ensuring a clean start every time.
 - **Smarter Exit Handlers**: `Ctrl+C` now triggers a graceful shutdown and automatically closes the terminal window after a 3-second countdown.
 
 ### 🚀 Optimization
+
 - **Data Compression**: Gzip compression added to all snapshots, reducing mobile data usage and speeding up loading on thin signals.
 - **Express Speed**: Snapshots are now served with explicit UTF-8 encoding and optimized headers to prevent character corruption on mobile proxies.
 
 ---
 
 ## v0.1.7 - Robustness & Stability Update 🛡️
+
 **Release Date:** January 21, 2026
 
 ---
@@ -190,26 +247,31 @@ All notable changes to **Antigravity Phone Connect** are documented here, in rev
 ### ✨ Key Improvements
 
 #### 🔄 Smart Reconnection
+
 - **Auto-Recovery**: Server now automatically detects lost CDP connections (e.g., if you close/reopen Antigravity) and reconnects without needing a restart.
-- **Resilient Startup**: You can now start the server *before* Antigravity. It will patiently poll ("🔍 Looking for Antigravity...") until it finds the debug port.
+- **Resilient Startup**: You can now start the server _before_ Antigravity. It will patiently poll ("🔍 Looking for Antigravity...") until it finds the debug port.
 - **Context Awareness**: Improved logic to track active execution contexts, preventing "stuck" snapshots when tabs are closed or refreshed.
 
 #### 🛠️ Frontend & Performance
+
 - **Client-Side Rendering**: Fixed a critical bug where the mobile client would hang on loading due to a syntax error in dynamic CSS injection.
 - **Optimized Capture**: Rewrote the CSS gathering logic to use array joining instead of string concatenation, improving performance on large chat histories.
 - **Syntax Fixes**: Corrected template literal escaping in the snapshot capture script (`\n` vs `\\n`) to prevent runtime evaluation errors.
 
 #### 🔍 Enhanced Diagnostics
+
 - **Throttled Logging**: Added intelligent logging that warns about common issues (like "cascade not found") only once every 10 seconds, preventing console spam.
 - **Actionable Tips**: Error messages now include helpful hints (e.g., "Tip: Ensure an active chat is open in Antigravity").
 
 #### 🐛 Bug Fixes
+
 - **Registry Path Handling**: Fixed `install_context_menu.bat` to correctly handle installation paths containing spaces (wrapping `%V` in quotes).
 - **Process Cleanup**: Improved the "Auto-Port Kill" feature to be more reliable on Windows.
 
 ---
 
 ## v0.1.6 - Mobile Copy & Stability Improvements 📋
+
 **Release Date:** January 20, 2026
 
 ---
@@ -217,6 +279,7 @@ All notable changes to **Antigravity Phone Connect** are documented here, in rev
 ### ✨ New Features
 
 #### 📋 Mobile Code Block Copy Button
+
 - **One-Tap Copy**: Small copy icon appears next to all code blocks on mobile
 - **Cross-Platform Support**: Works on Android, iOS, Windows, and macOS browsers
 - **Visual Feedback**: Icon turns into a green checkmark (✓) on successful copy
@@ -224,6 +287,7 @@ All notable changes to **Antigravity Phone Connect** are documented here, in rev
 - **Minimal Design**: Icon-only button, no text, no frame - clean and unobtrusive
 
 #### 🔄 Automatic Port Cleanup
+
 - **No More EADDRINUSE**: Server automatically kills any existing process on port 3000 before starting
 - **Cross-Platform**: Works on Windows (`taskkill`), Linux (`kill`), and macOS (`kill`)
 - **Console Notification**: Shows `⚠️ Killed existing process on port 3000 (PID: XXXX)` when cleanup occurs
@@ -231,6 +295,7 @@ All notable changes to **Antigravity Phone Connect** are documented here, in rev
 ### 🐛 Bug Fixes
 
 #### 📜 Scroll Jumping Fix
+
 - **Problem**: When scrolling on phone, the view would jump to bottom after each snapshot update
 - **Solution**: Added 3-second scroll lock that respects user scroll position
 - **Smart Detection**: Auto-scroll resumes when user scrolls back to bottom or taps scroll-to-bottom button
@@ -254,6 +319,7 @@ All notable changes to **Antigravity Phone Connect** are documented here, in rev
 ---
 
 ## v0.1.5 - HTTPS & Scroll Sync 🔒
+
 **Release Date:** January 17, 2026
 
 ---
@@ -265,6 +331,7 @@ This release introduces **HTTPS support**, **scroll synchronization**, and sever
 ### ✨ New Features
 
 #### 🔒 HTTPS Support
+
 - **Secure connections** with self-signed SSL certificates
 - **Hybrid certificate generation**: Tries OpenSSL first (for proper IP SAN support), falls back to Node.js crypto (zero dependencies)
 - **Auto-detection**: Server automatically uses HTTPS when certificates are present
@@ -272,11 +339,13 @@ This release introduces **HTTPS support**, **scroll synchronization**, and sever
 - **Git for Windows support**: Automatically finds OpenSSL bundled with Git
 
 #### 📜 Scroll Sync
+
 - **Bi-directional scrolling**: When you scroll on your phone, the desktop Antigravity scrolls too
 - **Virtualized content support**: Triggers snapshot reload after scrolling to capture newly rendered messages
 - **Debounced**: 150ms debounce to prevent excessive requests
 
 #### 📄 New Documentation
+
 - **SECURITY.md**: Comprehensive security guide with:
   - Browser warning bypass instructions (Chrome, Safari, Firefox, Edge)
   - Certificate verification commands
@@ -286,34 +355,39 @@ This release introduces **HTTPS support**, **scroll synchronization**, and sever
 ### 🐛 Bug Fixes
 
 #### Message Sending
+
 - **Fixed**: "Error sending: Unknown" popup no longer appears when message is successfully sent
 - **Fixed**: Message input now clears immediately after sending (optimistic UI)
 - **Changed**: `/send` endpoint now always returns 200 OK
 
 #### CSS Formatting
+
 - **Fixed**: Double-escaped newline in CSS capture that was breaking phone formatting
 
 #### IP Detection
+
 - **Fixed**: Now prioritizes real network IPs (192.168.x.x, 10.x.x.x) over virtual adapters (172.x.x.x from WSL/Docker)
 - **Fixed**: Server now displays only one URL instead of multiple confusing options
 
 ### 🔌 New API Endpoints
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/ssl-status` | GET | Returns HTTPS status and certificate info |
-| `/generate-ssl` | POST | Generates SSL certificates via web UI |
-| `/remote-scroll` | POST | Syncs phone scroll position to desktop |
+| Endpoint         | Method | Description                               |
+| ---------------- | ------ | ----------------------------------------- |
+| `/ssl-status`    | GET    | Returns HTTPS status and certificate info |
+| `/generate-ssl`  | POST   | Generates SSL certificates via web UI     |
+| `/remote-scroll` | POST   | Syncs phone scroll position to desktop    |
 
 ### 🔧 Technical Details
 
 #### HTTPS Implementation
+
 - Uses Node.js built-in `https` module
 - Certificates stored in `./certs/` (gitignored)
 - Server checks for `certs/server.key` and `certs/server.cert` on startup
 - WebSocket automatically upgrades to `wss://` when HTTPS is enabled
 
 #### Scroll Sync Implementation
+
 - Uses percentage-based scrolling for cross-device consistency
 - Handles Antigravity's virtualized scrolling by:
   1. Scrolling desktop to position
@@ -324,6 +398,7 @@ This release introduces **HTTPS support**, **scroll synchronization**, and sever
 ---
 
 ## v0.1.0 - Initial Release 🎉
+
 **Release Date:** January 17, 2026
 
 ---
@@ -333,60 +408,67 @@ We are thrilled to announce the **first official release** of **Antigravity Phon
 ### ✨ Features
 
 #### 🔄 Real-Time Mirroring
+
 - **1-Second Polling**: Near-instant sync keeps your phone's display updated with your desktop session.
 - **WebSocket Notifications**: Efficient push updates notify your phone only when content changes.
 - **Smart Content Hashing**: Minimizes bandwidth by detecting actual UI changes.
 
 #### 🎮 Remote Control
+
 - **Send Messages**: Compose and send prompts to your AI directly from your phone.
 - **Stop Generations**: Halt long-running AI generations with a single tap.
 - **Mode Switching**: Toggle between **Fast** and **Planning** modes remotely.
 - **Model Selection**: Switch between AI models (Gemini, Claude, GPT) on the fly.
 
 #### 🧠 Thought Expansion
+
 - **Remote Click Relay**: Tap on "Thinking..." or "Thought" blocks on your phone to expand them on your desktop IDE.
 - **Full Reasoning Access**: Peek into the AI's internal reasoning process from anywhere in your home.
 
 #### 🔁 Bi-Directional Sync
+
 - **State Synchronization**: Changes made on your desktop (model, mode) are automatically reflected on your phone.
 - **Force Refresh**: Manually trigger a full sync with the Refresh button when needed.
 
 #### 🎨 Premium Mobile UI
+
 - **Dark-Themed Design**: Sleek, modern slate-dark interface optimized for mobile viewing.
 - **Touch-Optimized**: Large tap targets and responsive layouts for comfortable mobile interaction.
 - **Aggressive CSS Inheritance**: VS Code theme-agnostic rendering ensures consistent mobile appearance.
 
 #### 📁 Context Menu Integration
+
 - **Windows**: Right-click any folder and select "Open with Antigravity (Debug)" for instant debugging sessions.
 - **Linux (Nautilus/GNOME)**: Native Nautilus script integration for seamless right-click access.
 - **macOS**: Step-by-step Quick Action guide for Automator-based integration.
 
 #### 🛠️ Context Menu Management Scripts
+
 - **Install/Remove**: Easy toggle for context menu entries.
 - **Backup**: Automatic backup before making registry/script changes.
 - **Restart**: One-click Explorer (Windows) or Nautilus (Linux) restart to apply changes.
 
 ### 🖥️ Platform Support
 
-| Platform | Launcher Script | Context Menu Script |
-|:---------|:----------------|:--------------------|
+| Platform    | Launcher Script              | Context Menu Script        |
+| :---------- | :--------------------------- | :------------------------- |
 | **Windows** | `start_ag_phone_connect.bat` | `install_context_menu.bat` |
-| **macOS** | `start_ag_phone_connect.sh` | Manual Automator setup |
-| **Linux** | `start_ag_phone_connect.sh` | `install_context_menu.sh` |
+| **macOS**   | `start_ag_phone_connect.sh`  | Manual Automator setup     |
+| **Linux**   | `start_ag_phone_connect.sh`  | `install_context_menu.sh`  |
 
 ### 📡 API Endpoints
 
-| Endpoint | Method | Description |
-|:---------|:-------|:------------|
-| `/health` | GET | Server status and CDP connection health |
-| `/snapshot` | GET | Latest captured HTML/CSS snapshot |
-| `/app-state` | GET | Current Mode and Model selection |
-| `/send` | POST | Send a message to the AI chat |
-| `/stop` | POST | Stop current AI generation |
-| `/set-mode` | POST | Switch between Fast/Planning modes |
-| `/set-model` | POST | Change the AI model |
-| `/remote-click` | POST | Trigger click for Thought expansion |
-| `/debug-ui` | GET | Serialized UI tree for debugging |
+| Endpoint        | Method | Description                             |
+| :-------------- | :----- | :-------------------------------------- |
+| `/health`       | GET    | Server status and CDP connection health |
+| `/snapshot`     | GET    | Latest captured HTML/CSS snapshot       |
+| `/app-state`    | GET    | Current Mode and Model selection        |
+| `/send`         | POST   | Send a message to the AI chat           |
+| `/stop`         | POST   | Stop current AI generation              |
+| `/set-mode`     | POST   | Switch between Fast/Planning modes      |
+| `/set-model`    | POST   | Change the AI model                     |
+| `/remote-click` | POST   | Trigger click for Thought expansion     |
+| `/debug-ui`     | GET    | Serialized UI tree for debugging        |
 
 ### 📋 Requirements
 
@@ -396,10 +478,10 @@ We are thrilled to announce the **first official release** of **Antigravity Phon
 
 ### 📦 Dependencies
 
-| Package | Version | Purpose |
-|:--------|:--------|:--------|
-| `express` | ^4.18.2 | HTTP server for UI and API |
-| `ws` | ^8.18.0 | WebSocket for real-time updates |
+| Package   | Version | Purpose                         |
+| :-------- | :------ | :------------------------------ |
+| `express` | ^4.18.2 | HTTP server for UI and API      |
+| `ws`      | ^8.18.0 | WebSocket for real-time updates |
 
 ### 🔒 Security
 
@@ -441,4 +523,4 @@ Copyright (C) 2026 **Krishna Kanth B** ([@krishnakanthb13](https://github.com/kr
 
 ---
 
-*For detailed documentation, see [CODE_DOCUMENTATION.md](CODE_DOCUMENTATION.md) and [DESIGN_PHILOSOPHY.md](DESIGN_PHILOSOPHY.md).*
+_For detailed documentation, see [CODE_DOCUMENTATION.md](CODE_DOCUMENTATION.md) and [DESIGN_PHILOSOPHY.md](DESIGN_PHILOSOPHY.md)._

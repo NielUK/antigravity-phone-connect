@@ -94,6 +94,10 @@ def print_qr(url):
 # Main Execution
 # -----------------------------------------------------------------------------
 def main():
+    # 0. Ensure we are in the correct directory
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    os.chdir(BASE_DIR)
+
     parser = argparse.ArgumentParser(description="Antigravity Phone Connect Launcher")
     parser.add_argument('--mode', choices=['local', 'web'], default='web', help="Mode to run in: 'local' (WiFi) or 'web' (Internet)")
     args = parser.parse_args()
@@ -154,7 +158,7 @@ def main():
     try:
         if args.mode == 'local':
             ip = get_local_ip()
-            port = os.environ.get('PORT', '3000')
+            port = os.environ.get('PORT', '3001')
             
             # Detect HTTPS
             protocol = "http"
@@ -187,7 +191,7 @@ def main():
             else:
                 print("⚠️  Warning: NGROK_AUTHTOKEN not found in .env. Tunnel might expire.")
 
-            port = os.environ.get('PORT', '3000')
+            port = os.environ.get('PORT', '3001')
             
             # Detect HTTPS
             protocol = "http"
@@ -200,8 +204,8 @@ def main():
             tunnel = ngrok.connect(addr, host_header="rewrite")
             public_url = tunnel.public_url
             
-            # Magic URL with password
-            final_url = f"{public_url}?key={passcode}"
+            # Magic URL with password and ngrok bypass
+            final_url = f"{public_url}?key={passcode}&ngrok-skip-browser-warning=true"
             
             print("\n" + "="*50)
             print(f"   🌍 GLOBAL WEB ACCESS")

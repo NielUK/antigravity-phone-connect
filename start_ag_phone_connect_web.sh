@@ -14,7 +14,7 @@ pkill -f "node server.js" &> /dev/null
 pkill -f "ngrok" &> /dev/null
 # Cleanup by port (Linux/Mac)
 if command -v lsof &> /dev/null; then
-    lsof -ti:3000 | xargs kill -9 &> /dev/null
+    lsof -ti:3001 | xargs kill -9 &> /dev/null
 fi
 
 # 1. Ensure dependencies are installed

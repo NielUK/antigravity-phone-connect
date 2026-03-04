@@ -14,7 +14,7 @@ echo.
 echo [0/2] Cleaning up orphans...
 taskkill /f /im node.exe /fi "WINDOWTITLE eq AG_SERVER_PROC*" >nul 2>&1
 taskkill /f /im ngrok.exe >nul 2>&1
-for /f "tokens=5" %%a in ('netstat -aon ^| findstr :3000 ^| findstr LISTENING') do taskkill /f /pid %%a >nul 2>&1
+for /f "tokens=5" %%a in ('netstat -aon ^| findstr :3001 ^| findstr LISTENING') do taskkill /f /pid %%a >nul 2>&1
 
 :: 1. Ensure dependencies are installed
 if not exist "node_modules" (
