@@ -519,7 +519,7 @@ Based on the original [Antigravity Shit-Chat](https://github.com/gherghett/Antig
 ## 📄 License
 
 Licensed under the [GNU GPL v3](LICENSE).  
-Copyright (C) 2026 **Krishna Kanth B** ([@krishnakanthb13](https://github.com/krishnakanthb13))
+Copyright (C) 2026 **NielUK** ([@NielUK](https://github.com/NielUK))
 
 ---
 
