@@ -758,62 +758,56 @@ async function remoteScroll(cdp, { scrollTop, scrollPercent }) {
 }
 
 // Toggle ITV (Interactive Toggle Extension)
-// Follows the same pattern as setMode: walks the DOM for ITV text/state then clicks it
+// ITV lives in the VS Code status bar at the bottom of the window.
+// Status bar items are <a class="statusbar-item ..."> elements containing "ITV: ON" or "ITV: OFF"
 async function toggleITV(cdp) {
   const EXP = `(async () => {
         try {
-            // STRATEGY: ITV is a VS Code extension toggle. Like the Mode button,
-            // it will have text or an icon. We search broadly.
-
-            // 1. Find any element whose leaf text, aria-label, or title mentions ITV
-            const allEls = Array.from(document.querySelectorAll('*'));
-
-            let itvEl = null;
-
-            // Primary: find a leaf node containing ITV text  
-            const leafCandidates = allEls.filter(el => {
-                if (el.children.length > 2) return false; // allow shallow containers
-                const txt = (el.innerText || el.textContent || '').trim().toUpperCase();
-                return txt === 'ITV' || txt === 'ITV: ON' || txt === 'ITV: OFF' ||
-                       txt === 'ITV ON' || txt === 'ITV OFF';
-            });
-
-            // Walk up from each candidate to find a clickable parent (like setMode does)
-            for (const el of leafCandidates) {
-                if (el.offsetParent === null) continue;
-                let current = el;
-                for (let i = 0; i < 5; i++) {
-                    if (!current) break;
-                    const style = window.getComputedStyle(current);
-                    if (style.cursor === 'pointer' || current.tagName === 'BUTTON' || current.getAttribute('role') === 'button') {
-                        itvEl = current;
-                        break;
-                    }
-                    current = current.parentElement;
+            // ── Strategy 1: Status bar item (primary) ──
+            // VS Code status bar: #workbench\\.parts\\.statusbar .statusbar-item
+            // The item contains text like "ITV: ON" or "ITV: OFF"
+            const statusbar = document.querySelector('#workbench\\.parts\\.statusbar, .part.statusbar, [id*="statusbar"]');
+            if (statusbar) {
+                const items = Array.from(statusbar.querySelectorAll('a, [role="button"], span, div'));
+                const itvItem = items.find(el => {
+                    const txt = (el.innerText || el.textContent || '').trim().toUpperCase();
+                    return txt.startsWith('ITV');
+                });
+                if (itvItem) {
+                    itvItem.click();
+                    return { success: true, method: 'statusbar_targeted', text: (itvItem.innerText || '').trim() };
                 }
-                if (itvEl) break;
             }
 
-            // Fallback: aria-label or title containing ITV
-            if (!itvEl) {
-                itvEl = Array.from(document.querySelectorAll('[aria-label*="ITV" i], [title*="ITV" i], [data-tooltip*="ITV" i]'))
-                    .find(el => el.offsetParent !== null);
+            // ── Strategy 2: Any statusbar-item class with ITV text ──
+            const byClass = Array.from(document.querySelectorAll('.statusbar-item, [class*="statusbar-item"]'))
+                .find(el => (el.innerText || el.textContent || '').trim().toUpperCase().startsWith('ITV'));
+            if (byClass) {
+                byClass.click();
+                return { success: true, method: 'statusbar_class', text: (byClass.innerText || '').trim() };
             }
 
-            // Fallback 2: class or id containing 'itv'
-            if (!itvEl) {
-                itvEl = Array.from(document.querySelectorAll('[class*="itv"], [id*="itv"]'))
-                    .find(el => el.offsetParent !== null);
+            // ── Strategy 3: Full DOM scan - any visible element with ITV text ──
+            // (No child-count filter since statusbar items have spans inside)
+            const itvEl = Array.from(document.querySelectorAll('a, button, [role="button"], span, div'))
+                .find(el => {
+                    if (el.offsetParent === null) return false;
+                    const txt = (el.innerText || el.textContent || '').trim().toUpperCase();
+                    return txt === 'ITV: ON' || txt === 'ITV: OFF' || txt === 'ITV';
+                });
+            if (itvEl) {
+                itvEl.click();
+                return { success: true, method: 'full_scan', text: (itvEl.innerText || '').trim() };
             }
 
-            if (!itvEl) return { error: 'ITV button not found in Antigravity UI' };
+            // ── Strategy 4: aria-label or title ──
+            const byAttr = document.querySelector('[aria-label*="ITV" i], [title*="ITV" i]');
+            if (byAttr && byAttr.offsetParent !== null) {
+                byAttr.click();
+                return { success: true, method: 'aria_title' };
+            }
 
-            itvEl.click();
-            return { 
-                success: true, 
-                elementTag: itvEl.tagName,
-                elementText: (itvEl.innerText || itvEl.textContent || '').trim().substring(0, 30)
-            };
+            return { error: 'ITV status bar item not found' };
         } catch(e) { return { error: e.toString() }; }
     })()`;
 
@@ -829,7 +823,7 @@ async function toggleITV(cdp) {
       if (res.result?.value?.error && !res.result.value.error.includes('not found')) return res.result.value;
     } catch (e) {}
   }
-  return { error: "ITV button not found in any CDP context" };
+  return { error: "ITV status bar item not found in any CDP context" };
 }
 
 // Set AI Model
@@ -1474,16 +1468,25 @@ async function getAppState(cdp) {
             state.model = modelEl.innerText.trim();
         }
 
-        // 3. Get ITV State (ON/OFF)
-        const itvEl = allEls.find(el => {
-            if (el.children.length > 2) return false;
-            const txt = (el.innerText || el.textContent || '').trim().toUpperCase();
-            return txt === 'ITV' || txt === 'ITV: ON' || txt === 'ITV: OFF' || txt === 'ITV ON' || txt === 'ITV OFF';
-        });
-        if (itvEl) {
-            const itvText = (itvEl.innerText || itvEl.textContent || '').trim().toUpperCase();
-            state.itvActive = !itvText.includes('OFF');
-            state.itvState = itvText;
+        // 3. Get ITV State (ON/OFF) - ITV lives in the VS Code status bar
+        // Status bar items can have child spans, so no children-count filter here
+        const statusbar = document.querySelector('#workbench\\.parts\\.statusbar, .part.statusbar, [id*="statusbar"]');
+        let itvStateEl = null;
+        if (statusbar) {
+            itvStateEl = Array.from(statusbar.querySelectorAll('a, span, div'))
+                .find(el => (el.innerText || el.textContent || '').trim().toUpperCase().startsWith('ITV'));
+        }
+        // Fallback: full scan (no children filter for status bar items)
+        if (!itvStateEl) {
+            itvStateEl = allEls.find(el => {
+                const txt = (el.innerText || el.textContent || '').trim().toUpperCase();
+                return txt === 'ITV: ON' || txt === 'ITV: OFF' || txt === 'ITV';
+            });
+        }
+        if (itvStateEl) {
+            const itvTxt = (itvStateEl.innerText || itvStateEl.textContent || '').trim().toUpperCase();
+            state.itvActive = !itvTxt.includes('OFF');
+            state.itvState = itvTxt;
         } else {
             state.itvActive = null; // ITV not visible / not installed
         }
