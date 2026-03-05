@@ -10,7 +10,8 @@ echo.
 
 :: Cleanup stuck processes from previous runs
 echo [0/2] Cleaning up...
-taskkill /f /im ngrok.exe >nul 2>&1
+taskkill /f /im ngrok.exe /t >nul 2>&1
+for /f "tokens=5" %%a in ('netstat -aon ^| findstr :3001 ^| findstr LISTENING') do taskkill /f /pid %%a >nul 2>&1
 for /f "tokens=5" %%a in ('netstat -aon ^| findstr :3000 ^| findstr LISTENING') do taskkill /f /pid %%a >nul 2>&1
 
 :: Check dependencies
@@ -49,4 +50,7 @@ if not exist ".env" (
 
 echo [1/1] Launching Phone Connect (Outside)...
 python launcher.py --mode web
-exit
+echo.
+echo [DEBUG] Process finished. Keeping window open for error review.
+pause
+

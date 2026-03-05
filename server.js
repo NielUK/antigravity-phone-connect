@@ -1,35 +1,30 @@
 #!/usr/bin/env node
-import "dotenv/config";
-import express from "express";
-import compression from "compression";
-import cookieParser from "cookie-parser";
-import { WebSocketServer } from "ws";
-import http from "http";
-import https from "https";
-import fs from "fs";
-import os from "os";
-import WebSocket from "ws";
-import { fileURLToPath } from "url";
-import { dirname, join } from "path";
-import { inspectUI } from "./ui_inspector.js";
-import { execSync } from "child_process";
+import 'dotenv/config';
+import express from 'express';
+import compression from 'compression';
+import cookieParser from 'cookie-parser';
+import { WebSocketServer } from 'ws';
+import http from 'http';
+import https from 'https';
+import fs from 'fs';
+import os from 'os';
+import WebSocket from 'ws';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+import { inspectUI } from './ui_inspector.js';
+import { execSync } from 'child_process';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const PORTS = [9000, 9001, 9002, 9003];
 const POLL_INTERVAL = 1000; // 1 second
-const SERVER_PORT = process.env.PORT || 3001;
-const APP_PASSWORD = process.env.APP_PASSWORD || "antigravity";
-console.log(
-  "?? Pass Check: " +
-    (process.env.APP_PASSWORD
-      ? "From .env (" + process.env.APP_PASSWORD.length + " chars)"
-      : "Using DEFAULT fallback (antigravity)"),
-);
-const AUTH_COOKIE_NAME = "ag_auth_token";
+const SERVER_PORT = process.env.PORT || 3000;
+const APP_PASSWORD = process.env.APP_PASSWORD || 'antigravity';
+const AUTH_COOKIE_NAME = 'ag_auth_token';
 // Note: hashString is defined later, so we'll initialize the token inside createServer or use a simple string for now.
-let AUTH_TOKEN = "ag_default_token";
+let AUTH_TOKEN = 'ag_default_token';
+
 
 // Shared CDP connection
 let cdpConnection = null;
@@ -38,216 +33,176 @@ let lastSnapshotHash = null;
 
 // Kill any existing process on the server port (prevents EADDRINUSE)
 function killPortProcess(port) {
-  try {
-    if (process.platform === "win32") {
-      // Windows: Find PID using netstat and kill it
-      const result = execSync(
-        `netstat -ano | findstr :${port} | findstr LISTENING`,
-        { encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] },
-      );
-      const lines = result.trim().split("\n");
-      const pids = new Set();
-      for (const line of lines) {
-        const parts = line.trim().split(/\s+/);
-        const pid = parts[parts.length - 1];
-        if (pid && pid !== "0") pids.add(pid);
-      }
-      for (const pid of pids) {
-        try {
-          execSync(`taskkill /PID ${pid} /F`, { stdio: "pipe" });
-          console.log(
-            `âš ï¸  Killed existing process on port ${port} (PID: ${pid})`,
-          );
-        } catch (e) {
-          /* Process may have already exited */
+    try {
+        if (process.platform === 'win32') {
+            // Windows: Find PID using netstat and kill it
+            const result = execSync(`netstat -ano | findstr :${port} | findstr LISTENING`, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
+            const lines = result.trim().split('\n');
+            const pids = new Set();
+            for (const line of lines) {
+                const parts = line.trim().split(/\s+/);
+                const pid = parts[parts.length - 1];
+                if (pid && pid !== '0') pids.add(pid);
+            }
+            for (const pid of pids) {
+                try {
+                    execSync(`taskkill /PID ${pid} /F`, { stdio: 'pipe' });
+                    console.log(`⚠️  Killed existing process on port ${port} (PID: ${pid})`);
+                } catch (e) { /* Process may have already exited */ }
+            }
+        } else {
+            // Linux/macOS: Use lsof and kill
+            const result = execSync(`lsof -ti:${port}`, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
+            const pids = result.trim().split('\n').filter(p => p);
+            for (const pid of pids) {
+                try {
+                    execSync(`kill -9 ${pid}`, { stdio: 'pipe' });
+                    console.log(`⚠️  Killed existing process on port ${port} (PID: ${pid})`);
+                } catch (e) { /* Process may have already exited */ }
+            }
         }
-      }
-    } else {
-      // Linux/macOS: Use lsof and kill
-      const result = execSync(`lsof -ti:${port}`, {
-        encoding: "utf8",
-        stdio: ["pipe", "pipe", "pipe"],
-      });
-      const pids = result
-        .trim()
-        .split("\n")
-        .filter((p) => p);
-      for (const pid of pids) {
-        try {
-          execSync(`kill -9 ${pid}`, { stdio: "pipe" });
-          console.log(
-            `âš ï¸  Killed existing process on port ${port} (PID: ${pid})`,
-          );
-        } catch (e) {
-          /* Process may have already exited */
-        }
-      }
+        // Small delay to let the port be released
+        return new Promise(resolve => setTimeout(resolve, 500));
+    } catch (e) {
+        // No process found on port - this is fine
+        return Promise.resolve();
     }
-    // Small delay to let the port be released
-    return new Promise((resolve) => setTimeout(resolve, 500));
-  } catch (e) {
-    // No process found on port - this is fine
-    return Promise.resolve();
-  }
 }
 
 // Get local IP address for mobile access
 // Prefers real network IPs (192.168.x.x, 10.x.x.x) over virtual adapters (172.x.x.x from WSL/Docker)
 function getLocalIP() {
-  const interfaces = os.networkInterfaces();
-  const candidates = [];
+    const interfaces = os.networkInterfaces();
+    const candidates = [];
 
-  for (const name of Object.keys(interfaces)) {
-    for (const iface of interfaces[name]) {
-      // Skip internal and non-IPv4 addresses
-      if (iface.family === "IPv4" && !iface.internal) {
-        candidates.push({
-          address: iface.address,
-          name: name,
-          // Prioritize common home/office network ranges
-          priority: iface.address.startsWith("192.168.")
-            ? 1
-            : iface.address.startsWith("10.")
-              ? 2
-              : iface.address.startsWith("172.")
-                ? 3
-                : 4,
-        });
-      }
+    for (const name of Object.keys(interfaces)) {
+        for (const iface of interfaces[name]) {
+            // Skip internal and non-IPv4 addresses
+            if (iface.family === 'IPv4' && !iface.internal) {
+                candidates.push({
+                    address: iface.address,
+                    name: name,
+                    // Prioritize common home/office network ranges
+                    priority: iface.address.startsWith('192.168.') ? 1 :
+                        iface.address.startsWith('10.') ? 2 :
+                            iface.address.startsWith('172.') ? 3 : 4
+                });
+            }
+        }
     }
-  }
 
-  // Sort by priority and return the best one
-  candidates.sort((a, b) => a.priority - b.priority);
-  return candidates.length > 0 ? candidates[0].address : "localhost";
+    // Sort by priority and return the best one
+    candidates.sort((a, b) => a.priority - b.priority);
+    return candidates.length > 0 ? candidates[0].address : 'localhost';
 }
 
 // Helper: HTTP GET JSON
 function getJson(url) {
-  return new Promise((resolve, reject) => {
-    http
-      .get(url, (res) => {
-        let data = "";
-        res.on("data", (chunk) => (data += chunk));
-        res.on("end", () => {
-          try {
-            resolve(JSON.parse(data));
-          } catch (e) {
-            reject(e);
-          }
-        });
-      })
-      .on("error", reject);
-  });
+    return new Promise((resolve, reject) => {
+        http.get(url, (res) => {
+            let data = '';
+            res.on('data', chunk => data += chunk);
+            res.on('end', () => {
+                try { resolve(JSON.parse(data)); } catch (e) { reject(e); }
+            });
+        }).on('error', reject);
+    });
 }
 
 // Find Antigravity CDP endpoint
 // Find Antigravity CDP endpoint
 async function discoverCDP() {
-  const errors = [];
-  for (const port of PORTS) {
-    try {
-      const list = await getJson(`http://127.0.0.1:${port}/json/list`);
+    const errors = [];
+    for (const port of PORTS) {
+        try {
+            const list = await getJson(`http://127.0.0.1:${port}/json/list`);
 
-      // Priority 1: Standard Workbench (The main window)
-      const workbench = list.find(
-        (t) =>
-          t.url?.includes("workbench.html") ||
-          (t.title && t.title.includes("workbench")),
-      );
-      if (workbench && workbench.webSocketDebuggerUrl) {
-        console.log("Found Workbench target:", workbench.title);
-        return { port, url: workbench.webSocketDebuggerUrl };
-      }
+            // Priority 1: Standard Workbench (The main window)
+            const workbench = list.find(t => t.url?.includes('workbench.html') || (t.title && t.title.includes('workbench')));
+            if (workbench && workbench.webSocketDebuggerUrl) {
+                console.log('Found Workbench target:', workbench.title);
+                return { port, url: workbench.webSocketDebuggerUrl };
+            }
 
-      // Priority 2: Jetski/Launchpad (Fallback)
-      const jetski = list.find(
-        (t) => t.url?.includes("jetski") || t.title === "Launchpad",
-      );
-      if (jetski && jetski.webSocketDebuggerUrl) {
-        console.log("Found Jetski/Launchpad target:", jetski.title);
-        return { port, url: jetski.webSocketDebuggerUrl };
-      }
-    } catch (e) {
-      errors.push(`${port}: ${e.message}`);
+            // Priority 2: Jetski/Launchpad (Fallback)
+            const jetski = list.find(t => t.url?.includes('jetski') || t.title === 'Launchpad');
+            if (jetski && jetski.webSocketDebuggerUrl) {
+                console.log('Found Jetski/Launchpad target:', jetski.title);
+                return { port, url: jetski.webSocketDebuggerUrl };
+            }
+        } catch (e) {
+            errors.push(`${port}: ${e.message}`);
+        }
     }
-  }
-  const errorSummary = errors.length
-    ? `Errors: ${errors.join(", ")}`
-    : "No ports responding";
-  throw new Error(`CDP not found. ${errorSummary}`);
+    const errorSummary = errors.length ? `Errors: ${errors.join(', ')}` : 'No ports responding';
+    throw new Error(`CDP not found. ${errorSummary}`);
 }
 
 // Connect to CDP
 async function connectCDP(url) {
-  const ws = new WebSocket(url);
-  await new Promise((resolve, reject) => {
-    ws.on("open", resolve);
-    ws.on("error", reject);
-  });
-
-  let idCounter = 1;
-  const pendingCalls = new Map(); // Track pending calls by ID
-  const contexts = [];
-  const CDP_CALL_TIMEOUT = 30000; // 30 seconds timeout
-
-  // Single centralized message handler (fixes MaxListenersExceeded warning)
-  ws.on("message", (msg) => {
-    try {
-      const data = JSON.parse(msg);
-
-      // Handle CDP method responses
-      if (data.id !== undefined && pendingCalls.has(data.id)) {
-        const { resolve, reject, timeoutId } = pendingCalls.get(data.id);
-        clearTimeout(timeoutId);
-        pendingCalls.delete(data.id);
-
-        if (data.error) reject(data.error);
-        else resolve(data.result);
-      }
-
-      // Handle execution context events
-      if (data.method === "Runtime.executionContextCreated") {
-        contexts.push(data.params.context);
-      } else if (data.method === "Runtime.executionContextDestroyed") {
-        const id = data.params.executionContextId;
-        const idx = contexts.findIndex((c) => c.id === id);
-        if (idx !== -1) contexts.splice(idx, 1);
-      } else if (data.method === "Runtime.executionContextsCleared") {
-        contexts.length = 0;
-      }
-    } catch (e) {}
-  });
-
-  const call = (method, params) =>
-    new Promise((resolve, reject) => {
-      const id = idCounter++;
-
-      // Setup timeout to prevent memory leaks from never-resolved calls
-      const timeoutId = setTimeout(() => {
-        if (pendingCalls.has(id)) {
-          pendingCalls.delete(id);
-          reject(
-            new Error(
-              `CDP call ${method} timed out after ${CDP_CALL_TIMEOUT}ms`,
-            ),
-          );
-        }
-      }, CDP_CALL_TIMEOUT);
-
-      pendingCalls.set(id, { resolve, reject, timeoutId });
-      ws.send(JSON.stringify({ id, method, params }));
+    const ws = new WebSocket(url);
+    await new Promise((resolve, reject) => {
+        ws.on('open', resolve);
+        ws.on('error', reject);
     });
 
-  await call("Runtime.enable", {});
-  await new Promise((r) => setTimeout(r, 1000));
+    let idCounter = 1;
+    const pendingCalls = new Map(); // Track pending calls by ID
+    const contexts = [];
+    const CDP_CALL_TIMEOUT = 30000; // 30 seconds timeout
 
-  return { ws, call, contexts };
+    // Single centralized message handler (fixes MaxListenersExceeded warning)
+    ws.on('message', (msg) => {
+        try {
+            const data = JSON.parse(msg);
+
+            // Handle CDP method responses
+            if (data.id !== undefined && pendingCalls.has(data.id)) {
+                const { resolve, reject, timeoutId } = pendingCalls.get(data.id);
+                clearTimeout(timeoutId);
+                pendingCalls.delete(data.id);
+
+                if (data.error) reject(data.error);
+                else resolve(data.result);
+            }
+
+            // Handle execution context events
+            if (data.method === 'Runtime.executionContextCreated') {
+                contexts.push(data.params.context);
+            } else if (data.method === 'Runtime.executionContextDestroyed') {
+                const id = data.params.executionContextId;
+                const idx = contexts.findIndex(c => c.id === id);
+                if (idx !== -1) contexts.splice(idx, 1);
+            } else if (data.method === 'Runtime.executionContextsCleared') {
+                contexts.length = 0;
+            }
+        } catch (e) { }
+    });
+
+    const call = (method, params) => new Promise((resolve, reject) => {
+        const id = idCounter++;
+
+        // Setup timeout to prevent memory leaks from never-resolved calls
+        const timeoutId = setTimeout(() => {
+            if (pendingCalls.has(id)) {
+                pendingCalls.delete(id);
+                reject(new Error(`CDP call ${method} timed out after ${CDP_CALL_TIMEOUT}ms`));
+            }
+        }, CDP_CALL_TIMEOUT);
+
+        pendingCalls.set(id, { resolve, reject, timeoutId });
+        ws.send(JSON.stringify({ id, method, params }));
+    });
+
+    await call("Runtime.enable", {});
+    await new Promise(r => setTimeout(r, 1000));
+
+    return { ws, call, contexts };
 }
 
 // Capture chat snapshot
 async function captureSnapshot(cdp) {
-  const CAPTURE_SCRIPT = `(async () => {
+    const CAPTURE_SCRIPT = `(async () => {
         const cascade = document.getElementById('conversation') || document.getElementById('chat') || document.getElementById('cascade');
         if (!cascade) {
             // Debug info
@@ -395,44 +350,44 @@ async function captureSnapshot(cdp) {
         };
     })()`;
 
-  for (const ctx of cdp.contexts) {
-    try {
-      // console.log(`Trying context ${ctx.id} (${ctx.name || ctx.origin})...`);
-      const result = await cdp.call("Runtime.evaluate", {
-        expression: CAPTURE_SCRIPT,
-        returnByValue: true,
-        awaitPromise: true,
-        contextId: ctx.id,
-      });
+    for (const ctx of cdp.contexts) {
+        try {
+            // console.log(`Trying context ${ctx.id} (${ctx.name || ctx.origin})...`);
+            const result = await cdp.call("Runtime.evaluate", {
+                expression: CAPTURE_SCRIPT,
+                returnByValue: true,
+                awaitPromise: true,
+                contextId: ctx.id
+            });
 
-      if (result.exceptionDetails) {
-        // console.log(`Context ${ctx.id} exception:`, result.exceptionDetails);
-        continue;
-      }
+            if (result.exceptionDetails) {
+                // console.log(`Context ${ctx.id} exception:`, result.exceptionDetails);
+                continue;
+            }
 
-      if (result.result && result.result.value) {
-        const val = result.result.value;
-        if (val.error) {
-          // console.log(`Context ${ctx.id} script error:`, val.error);
-          // if (val.debug) console.log(`   Debug info:`, JSON.stringify(val.debug));
-        } else {
-          return val;
+            if (result.result && result.result.value) {
+                const val = result.result.value;
+                if (val.error) {
+                    // console.log(`Context ${ctx.id} script error:`, val.error);
+                    // if (val.debug) console.log(`   Debug info:`, JSON.stringify(val.debug));
+                } else {
+                    return val;
+                }
+            }
+        } catch (e) {
+            console.log(`Context ${ctx.id} connection error:`, e.message);
         }
-      }
-    } catch (e) {
-      console.log(`Context ${ctx.id} connection error:`, e.message);
     }
-  }
 
-  return null;
+    return null;
 }
 
 // Inject message into Antigravity
 async function injectMessage(cdp, text) {
-  // Use JSON.stringify for robust escaping (handles ", \, newlines, backticks, unicode, etc.)
-  const safeText = JSON.stringify(text);
+    // Use JSON.stringify for robust escaping (handles ", \, newlines, backticks, unicode, etc.)
+    const safeText = JSON.stringify(text);
 
-  const EXPRESSION = `(async () => {
+    const EXPRESSION = `(async () => {
         const cancel = document.querySelector('[data-tooltip-id="input-send-button-cancel-tooltip"]');
         if (cancel && cancel.offsetParent !== null) return { ok:false, reason:"busy" };
 
@@ -470,29 +425,79 @@ async function injectMessage(cdp, text) {
         return { ok:true, method:"enter_keypress" };
     })()`;
 
+    for (const ctx of cdp.contexts) {
+        try {
+            const result = await cdp.call("Runtime.evaluate", {
+                expression: EXPRESSION,
+                returnByValue: true,
+                awaitPromise: true,
+                contextId: ctx.id
+            });
+
+            if (result.result && result.result.value) {
+                return result.result.value;
+            }
+        } catch (e) { }
+    }
+
+    return { ok: false, reason: "no_context" };
+}
+
+// Toggle ITV
+async function toggleITV(cdp) {
+  const EXP = `(async () => {
+        try {
+            const allEls = Array.from(document.querySelectorAll('*'));
+            let itvEl = null;
+
+            const leafCandidates = allEls.filter(el => {
+                if (el.children.length > 2) return false;
+                const txt = (el.innerText || el.textContent || '').trim().toUpperCase();
+                return txt === 'ITV' || txt === 'ITV: ON' || txt === 'ITV: OFF' ||
+                       txt === 'ITV ON' || txt === 'ITV OFF';
+            });
+
+            for (const el of leafCandidates) {
+                if (el.offsetParent === null) continue;
+                let current = el;
+                for (let i = 0; i < 5; i++) {
+                    if (!current) break;
+                    const style = window.getComputedStyle(current);
+                    if (style.cursor === 'pointer' || current.tagName === 'BUTTON' || current.getAttribute('role') === 'button') {
+                        itvEl = current;
+                        break;
+                    }
+                    current = current.parentElement;
+                }
+                if (itvEl) break;
+            }
+
+            if (!itvEl) return { error: 'ITV toggle not found in DOM' };
+
+            itvEl.click();
+            return { success: true };
+        } catch(e) { return { error: e.toString() }; }
+    })()`;
+
   for (const ctx of cdp.contexts) {
     try {
-      const result = await cdp.call("Runtime.evaluate", {
-        expression: EXPRESSION,
+      const res = await cdp.call("Runtime.evaluate", {
+        expression: EXP,
         returnByValue: true,
         awaitPromise: true,
         contextId: ctx.id,
       });
-
-      if (result.result && result.result.value) {
-        return result.result.value;
-      }
+      if (res.result?.value?.success) return res.result.value;
     } catch (e) {}
   }
-
-  return { ok: false, reason: "no_context" };
+  return { error: "ITV button not found in any CDP context" };
 }
 
 // Set functionality mode (Fast vs Planning)
 async function setMode(cdp, mode) {
-  if (!["Fast", "Planning"].includes(mode)) return { error: "Invalid mode" };
+    if (!['Fast', 'Planning'].includes(mode)) return { error: 'Invalid mode' };
 
-  const EXP = `(async () => {
+    const EXP = `(async () => {
         try {
             // STRATEGY: Find the element that IS the current mode indicator.
             // It will have text 'Fast' or 'Planning'.
@@ -573,82 +578,59 @@ async function setMode(cdp, mode) {
         }
     })()`;
 
-  for (const ctx of cdp.contexts) {
-    try {
-      const res = await cdp.call("Runtime.evaluate", {
-        expression: EXP,
-        returnByValue: true,
-        awaitPromise: true,
-        contextId: ctx.id,
-      });
-      if (res.result?.value) return res.result.value;
-    } catch (e) {}
-  }
-  return { error: "Context failed" };
+    for (const ctx of cdp.contexts) {
+        try {
+            const res = await cdp.call("Runtime.evaluate", {
+                expression: EXP,
+                returnByValue: true,
+                awaitPromise: true,
+                contextId: ctx.id
+            });
+            if (res.result?.value) return res.result.value;
+        } catch (e) { }
+    }
+    return { error: 'Context failed' };
 }
 
 // Stop Generation
 async function stopGeneration(cdp) {
-  const EXP = `(async () => {
-        try {
-            // Strategy 1: Named tooltip ID (most reliable)
-            const byTooltip = document.querySelector('[data-tooltip-id="input-send-button-cancel-tooltip"]');
-            if (byTooltip && byTooltip.offsetParent !== null) {
-                byTooltip.click();
-                return { success: true, method: 'tooltip_id' };
-            }
+    const EXP = `(async () => {
+        // Look for the cancel button
+        const cancel = document.querySelector('[data-tooltip-id="input-send-button-cancel-tooltip"]');
+        if (cancel && cancel.offsetParent !== null) {
+            cancel.click();
+            return { success: true };
+        }
+        
+        // Fallback: Look for a square icon in the send button area
+        const stopBtn = document.querySelector('button svg.lucide-square')?.closest('button');
+        if (stopBtn && stopBtn.offsetParent !== null) {
+            stopBtn.click();
+            return { success: true, method: 'fallback_square' };
+        }
 
-            // Strategy 2: Square icon in send button (stop icon = lucide-square)
-            const bySquare = document.querySelector('button svg.lucide-square, button svg[class*="square"]')?.closest('button');
-            if (bySquare && bySquare.offsetParent !== null) {
-                bySquare.click();
-                return { success: true, method: 'square_icon' };
-            }
-
-            // Strategy 3: Button with aria-label containing 'stop' or 'cancel'
-            const byAria = Array.from(document.querySelectorAll('button, [role="button"]')).find(el => {
-                const label = (el.getAttribute('aria-label') || el.getAttribute('title') || '').toLowerCase();
-                return (label.includes('stop') || label.includes('cancel')) && el.offsetParent !== null;
-            });
-            if (byAria) {
-                byAria.click();
-                return { success: true, method: 'aria_label' };
-            }
-
-            // Strategy 4: Any button containing 'Stop' or 'Cancel' text at the bottom input area
-            const allBtns = Array.from(document.querySelectorAll('button'));
-            const byText = allBtns.find(btn => {
-                const txt = (btn.innerText || '').toLowerCase().trim();
-                return (txt === 'stop' || txt === 'cancel' || txt.includes('stop generation')) && btn.offsetParent !== null;
-            });
-            if (byText) {
-                byText.click();
-                return { success: true, method: 'button_text' };
-            }
-
-            return { error: 'No active generation found to stop - no stop/cancel button visible' };
-        } catch(e) { return { error: e.toString() }; }
+        return { error: 'No active generation found to stop' };
     })()`;
 
-  for (const ctx of cdp.contexts) {
-    try {
-      const res = await cdp.call("Runtime.evaluate", {
-        expression: EXP,
-        returnByValue: true,
-        awaitPromise: true,
-        contextId: ctx.id,
-      });
-      if (res.result?.value?.success) return res.result.value;
-    } catch (e) {}
-  }
-  return { error: "Context failed - stop button not found" };
+    for (const ctx of cdp.contexts) {
+        try {
+            const res = await cdp.call("Runtime.evaluate", {
+                expression: EXP,
+                returnByValue: true,
+                awaitPromise: true,
+                contextId: ctx.id
+            });
+            if (res.result?.value) return res.result.value;
+        } catch (e) { }
+    }
+    return { error: 'Context failed' };
 }
 
 // Click Element (Remote)
 async function clickElement(cdp, { selector, index, textContent }) {
-  const safeText = JSON.stringify(textContent || "");
+    const safeText = JSON.stringify(textContent || '');
 
-  const EXP = `(async () => {
+    const EXP = `(async () => {
         try {
             // Priority: Search inside the chat container first for better accuracy
             const root = document.getElementById('conversation') || document.getElementById('chat') || document.getElementById('cascade') || document;
@@ -687,27 +669,25 @@ async function clickElement(cdp, { selector, index, textContent }) {
         }
     })()`;
 
-  for (const ctx of cdp.contexts) {
-    try {
-      const res = await cdp.call("Runtime.evaluate", {
-        expression: EXP,
-        returnByValue: true,
-        awaitPromise: true,
-        contextId: ctx.id,
-      });
-      if (res.result?.value?.success) return res.result.value;
-      // If we found it but click didn't return success (unlikely with this script), continue to next context
-    } catch (e) {}
-  }
-  return {
-    error: "Click failed in all contexts or element not found at index",
-  };
+    for (const ctx of cdp.contexts) {
+        try {
+            const res = await cdp.call("Runtime.evaluate", {
+                expression: EXP,
+                returnByValue: true,
+                awaitPromise: true,
+                contextId: ctx.id
+            });
+            if (res.result?.value?.success) return res.result.value;
+            // If we found it but click didn't return success (unlikely with this script), continue to next context
+        } catch (e) { }
+    }
+    return { error: 'Click failed in all contexts or element not found at index' };
 }
 
 // Remote scroll - sync phone scroll to desktop
 async function remoteScroll(cdp, { scrollTop, scrollPercent }) {
-  // Try to scroll the chat container in Antigravity
-  const EXPRESSION = `(async () => {
+    // Try to scroll the chat container in Antigravity
+    const EXPRESSION = `(async () => {
         try {
             // Find the main scrollable chat container
             const scrollables = [...document.querySelectorAll('#conversation [class*="scroll"], #chat [class*="scroll"], #cascade [class*="scroll"], #conversation [style*="overflow"], #chat [style*="overflow"], #cascade [style*="overflow"]')]
@@ -743,92 +723,23 @@ async function remoteScroll(cdp, { scrollTop, scrollPercent }) {
         }
     })()`;
 
-  for (const ctx of cdp.contexts) {
-    try {
-      const res = await cdp.call("Runtime.evaluate", {
-        expression: EXPRESSION,
-        returnByValue: true,
-        awaitPromise: true,
-        contextId: ctx.id,
-      });
-      if (res.result?.value?.success) return res.result.value;
-    } catch (e) {}
-  }
-  return { error: "Scroll failed in all contexts" };
-}
-
-// Toggle ITV (Interactive Toggle Extension)
-// ITV lives in the VS Code status bar at the bottom of the window.
-// Status bar items are <a class="statusbar-item ..."> elements containing "ITV: ON" or "ITV: OFF"
-async function toggleITV(cdp) {
-  const EXP = `(async () => {
+    for (const ctx of cdp.contexts) {
         try {
-            // ── Strategy 1: Status bar item (primary) ──
-            // VS Code status bar: #workbench\\.parts\\.statusbar .statusbar-item
-            // The item contains text like "ITV: ON" or "ITV: OFF"
-            const statusbar = document.querySelector('#workbench\\.parts\\.statusbar, .part.statusbar, [id*="statusbar"]');
-            if (statusbar) {
-                const items = Array.from(statusbar.querySelectorAll('a, [role="button"], span, div'));
-                const itvItem = items.find(el => {
-                    const txt = (el.innerText || el.textContent || '').trim().toUpperCase();
-                    return txt.startsWith('ITV');
-                });
-                if (itvItem) {
-                    itvItem.click();
-                    return { success: true, method: 'statusbar_targeted', text: (itvItem.innerText || '').trim() };
-                }
-            }
-
-            // ── Strategy 2: Any statusbar-item class with ITV text ──
-            const byClass = Array.from(document.querySelectorAll('.statusbar-item, [class*="statusbar-item"]'))
-                .find(el => (el.innerText || el.textContent || '').trim().toUpperCase().startsWith('ITV'));
-            if (byClass) {
-                byClass.click();
-                return { success: true, method: 'statusbar_class', text: (byClass.innerText || '').trim() };
-            }
-
-            // ── Strategy 3: Full DOM scan - any visible element with ITV text ──
-            // (No child-count filter since statusbar items have spans inside)
-            const itvEl = Array.from(document.querySelectorAll('a, button, [role="button"], span, div'))
-                .find(el => {
-                    if (el.offsetParent === null) return false;
-                    const txt = (el.innerText || el.textContent || '').trim().toUpperCase();
-                    return txt === 'ITV: ON' || txt === 'ITV: OFF' || txt === 'ITV';
-                });
-            if (itvEl) {
-                itvEl.click();
-                return { success: true, method: 'full_scan', text: (itvEl.innerText || '').trim() };
-            }
-
-            // ── Strategy 4: aria-label or title ──
-            const byAttr = document.querySelector('[aria-label*="ITV" i], [title*="ITV" i]');
-            if (byAttr && byAttr.offsetParent !== null) {
-                byAttr.click();
-                return { success: true, method: 'aria_title' };
-            }
-
-            return { error: 'ITV status bar item not found' };
-        } catch(e) { return { error: e.toString() }; }
-    })()`;
-
-  for (const ctx of cdp.contexts) {
-    try {
-      const res = await cdp.call("Runtime.evaluate", {
-        expression: EXP,
-        returnByValue: true,
-        awaitPromise: true,
-        contextId: ctx.id,
-      });
-      if (res.result?.value?.success) return res.result.value;
-      if (res.result?.value?.error && !res.result.value.error.includes('not found')) return res.result.value;
-    } catch (e) {}
-  }
-  return { error: "ITV status bar item not found in any CDP context" };
+            const res = await cdp.call("Runtime.evaluate", {
+                expression: EXPRESSION,
+                returnByValue: true,
+                awaitPromise: true,
+                contextId: ctx.id
+            });
+            if (res.result?.value?.success) return res.result.value;
+        } catch (e) { }
+    }
+    return { error: 'Scroll failed in all contexts' };
 }
 
 // Set AI Model
 async function setModel(cdp, modelName) {
-  const EXP = `(async () => {
+    const EXP = `(async () => {
         try {
             // STRATEGY: Multi-layered approach to find and click the model selector
             const KNOWN_KEYWORDS = ["Gemini", "Claude", "GPT", "Model"];
@@ -953,23 +864,23 @@ async function setModel(cdp, modelName) {
         }
     })()`;
 
-  for (const ctx of cdp.contexts) {
-    try {
-      const res = await cdp.call("Runtime.evaluate", {
-        expression: EXP,
-        returnByValue: true,
-        awaitPromise: true,
-        contextId: ctx.id,
-      });
-      if (res.result?.value) return res.result.value;
-    } catch (e) {}
-  }
-  return { error: "Context failed" };
+    for (const ctx of cdp.contexts) {
+        try {
+            const res = await cdp.call("Runtime.evaluate", {
+                expression: EXP,
+                returnByValue: true,
+                awaitPromise: true,
+                contextId: ctx.id
+            });
+            if (res.result?.value) return res.result.value;
+        } catch (e) { }
+    }
+    return { error: 'Context failed' };
 }
 
 // Start New Chat - Click the + button at the TOP of the chat window (NOT the context/media + button)
 async function startNewChat(cdp) {
-  const EXP = `(async () => {
+    const EXP = `(async () => {
         try {
             // Priority 1: Exact selector from user (data-tooltip-id="new-conversation-tooltip")
             const exactBtn = document.querySelector('[data-tooltip-id="new-conversation-tooltip"]');
@@ -1020,22 +931,22 @@ async function startNewChat(cdp) {
         }
     })()`;
 
-  for (const ctx of cdp.contexts) {
-    try {
-      const res = await cdp.call("Runtime.evaluate", {
-        expression: EXP,
-        returnByValue: true,
-        awaitPromise: true,
-        contextId: ctx.id,
-      });
-      if (res.result?.value?.success) return res.result.value;
-    } catch (e) {}
-  }
-  return { error: "Context failed" };
+    for (const ctx of cdp.contexts) {
+        try {
+            const res = await cdp.call("Runtime.evaluate", {
+                expression: EXP,
+                returnByValue: true,
+                awaitPromise: true,
+                contextId: ctx.id
+            });
+            if (res.result?.value?.success) return res.result.value;
+        } catch (e) { }
+    }
+    return { error: 'Context failed' };
 }
 // Get Chat History - Click history button and scrape conversations
 async function getChatHistory(cdp) {
-  const EXP = `(async () => {
+    const EXP = `(async () => {
         try {
             const chats = [];
             const seenTitles = new Set();
@@ -1198,36 +1109,31 @@ async function getChatHistory(cdp) {
         }
     })()`;
 
-  let lastError = null;
-  for (const ctx of cdp.contexts) {
-    try {
-      const res = await cdp.call("Runtime.evaluate", {
-        expression: EXP,
-        returnByValue: true,
-        awaitPromise: true,
-        contextId: ctx.id,
-      });
-      if (res.result?.value) return res.result.value;
-      // If result.value is null/undefined but no error thrown, check exceptionDetails
-      if (res.exceptionDetails) {
-        lastError =
-          res.exceptionDetails.exception?.description ||
-          res.exceptionDetails.text;
-      }
-    } catch (e) {
-      lastError = e.message;
+    let lastError = null;
+    for (const ctx of cdp.contexts) {
+        try {
+            const res = await cdp.call("Runtime.evaluate", {
+                expression: EXP,
+                returnByValue: true,
+                awaitPromise: true,
+                contextId: ctx.id
+            });
+            if (res.result?.value) return res.result.value;
+            // If result.value is null/undefined but no error thrown, check exceptionDetails
+            if (res.exceptionDetails) {
+                lastError = res.exceptionDetails.exception?.description || res.exceptionDetails.text;
+            }
+        } catch (e) {
+            lastError = e.message;
+        }
     }
-  }
-  return {
-    error: "Context failed: " + (lastError || "No contexts available"),
-    chats: [],
-  };
+    return { error: 'Context failed: ' + (lastError || 'No contexts available'), chats: [] };
 }
 
 async function selectChat(cdp, chatTitle) {
-  const safeChatTitle = JSON.stringify(chatTitle);
+    const safeChatTitle = JSON.stringify(chatTitle);
 
-  const EXP = `(async () => {
+    const EXP = `(async () => {
     try {
         const targetTitle = ${safeChatTitle};
 
@@ -1328,23 +1234,23 @@ async function selectChat(cdp, chatTitle) {
     }
 })()`;
 
-  for (const ctx of cdp.contexts) {
-    try {
-      const res = await cdp.call("Runtime.evaluate", {
-        expression: EXP,
-        returnByValue: true,
-        awaitPromise: true,
-        contextId: ctx.id,
-      });
-      if (res.result?.value) return res.result.value;
-    } catch (e) {}
-  }
-  return { error: "Context failed" };
+    for (const ctx of cdp.contexts) {
+        try {
+            const res = await cdp.call("Runtime.evaluate", {
+                expression: EXP,
+                returnByValue: true,
+                awaitPromise: true,
+                contextId: ctx.id
+            });
+            if (res.result?.value) return res.result.value;
+        } catch (e) { }
+    }
+    return { error: 'Context failed' };
 }
 
 // Close History Panel (Escape)
 async function closeHistory(cdp) {
-  const EXP = `(async () => {
+    const EXP = `(async () => {
         try {
             document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true }));
             document.dispatchEvent(new KeyboardEvent('keyup',   { key: 'Escape', code: 'Escape', bubbles: true }));
@@ -1354,23 +1260,23 @@ async function closeHistory(cdp) {
         }
     })()`;
 
-  for (const ctx of cdp.contexts) {
-    try {
-      const res = await cdp.call("Runtime.evaluate", {
-        expression: EXP,
-        returnByValue: true,
-        awaitPromise: true,
-        contextId: ctx.id,
-      });
-      if (res.result?.value?.success) return res.result.value;
-    } catch (e) {}
-  }
-  return { error: "Failed to close history panel" };
+    for (const ctx of cdp.contexts) {
+        try {
+            const res = await cdp.call("Runtime.evaluate", {
+                expression: EXP,
+                returnByValue: true,
+                awaitPromise: true,
+                contextId: ctx.id
+            });
+            if (res.result?.value?.success) return res.result.value;
+        } catch (e) { }
+    }
+    return { error: 'Failed to close history panel' };
 }
 
 // Check if a chat is currently open (has cascade element)
 async function hasChatOpen(cdp) {
-  const EXP = `(() => {
+    const EXP = `(() => {
     const chatContainer = document.getElementById('conversation') || document.getElementById('chat') || document.getElementById('cascade');
     const hasMessages = chatContainer && chatContainer.querySelectorAll('[class*="message"], [data-message]').length > 0;
     return {
@@ -1380,22 +1286,22 @@ async function hasChatOpen(cdp) {
     };
 })()`;
 
-  for (const ctx of cdp.contexts) {
-    try {
-      const res = await cdp.call("Runtime.evaluate", {
-        expression: EXP,
-        returnByValue: true,
-        contextId: ctx.id,
-      });
-      if (res.result?.value) return res.result.value;
-    } catch (e) {}
-  }
-  return { hasChat: false, hasMessages: false, editorFound: false };
+    for (const ctx of cdp.contexts) {
+        try {
+            const res = await cdp.call("Runtime.evaluate", {
+                expression: EXP,
+                returnByValue: true,
+                contextId: ctx.id
+            });
+            if (res.result?.value) return res.result.value;
+        } catch (e) { }
+    }
+    return { hasChat: false, hasMessages: false, editorFound: false };
 }
 
 // Get App State (Mode & Model)
 async function getAppState(cdp) {
-  const EXP = `(async () => {
+    const EXP = `(async () => {
     try {
         const state = { mode: 'Unknown', model: 'Unknown' };
 
@@ -1434,13 +1340,7 @@ async function getAppState(cdp) {
         // 2. Get Model
         // Strategy: Look for leaf text nodes containing a known model keyword
         const KNOWN_MODELS = ["Gemini", "Claude", "GPT"];
-        const textNodes2 = allEls.filter(el => {
-            if (el.children.length > 0 || !el.innerText) return false;
-            const txt = el.innerText.trim();
-            // IGNORE percentage indicators (e.g. "Claude 100%")
-            if (txt.includes('%')) return false;
-            return true;
-        });
+        const textNodes2 = allEls.filter(el => el.children.length === 0 && el.innerText);
         
         // First try: find inside a clickable parent (button, cursor:pointer)
         let modelEl = textNodes2.find(el => {
@@ -1468,474 +1368,367 @@ async function getAppState(cdp) {
             state.model = modelEl.innerText.trim();
         }
 
-        // 3. Get ITV State (ON/OFF) - ITV lives in the VS Code status bar
-        // Status bar items can have child spans, so no children-count filter here
-        const statusbar = document.querySelector('#workbench\\.parts\\.statusbar, .part.statusbar, [id*="statusbar"]');
-        let itvStateEl = null;
-        if (statusbar) {
-            itvStateEl = Array.from(statusbar.querySelectorAll('a, span, div'))
-                .find(el => (el.innerText || el.textContent || '').trim().toUpperCase().startsWith('ITV'));
-        }
-        // Fallback: full scan (no children filter for status bar items)
-        if (!itvStateEl) {
-            itvStateEl = allEls.find(el => {
-                const txt = (el.innerText || el.textContent || '').trim().toUpperCase();
-                return txt === 'ITV: ON' || txt === 'ITV: OFF' || txt === 'ITV';
-            });
-        }
-        if (itvStateEl) {
-            const itvTxt = (itvStateEl.innerText || itvStateEl.textContent || '').trim().toUpperCase();
-            state.itvActive = !itvTxt.includes('OFF');
-            state.itvState = itvTxt;
-        } else {
-            state.itvActive = null; // ITV not visible / not installed
-        }
-
         return state;
     } catch (e) { return { error: e.toString() }; }
-})()\`;
+})()`;
 
-  for (const ctx of cdp.contexts) {
-    try {
-      const res = await cdp.call("Runtime.evaluate", {
-        expression: EXP,
-        returnByValue: true,
-        awaitPromise: true,
-        contextId: ctx.id,
-      });
-      if (res.result?.value) return res.result.value;
-    } catch (e) {}
-  }
-  return { error: "Context failed" };
+    for (const ctx of cdp.contexts) {
+        try {
+            const res = await cdp.call("Runtime.evaluate", {
+                expression: EXP,
+                returnByValue: true,
+                awaitPromise: true,
+                contextId: ctx.id
+            });
+            if (res.result?.value) return res.result.value;
+        } catch (e) { }
+    }
+    return { error: 'Context failed' };
 }
 
 // Simple hash function
 function hashString(str) {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    const char = str.charCodeAt(i);
-    hash = (hash << 5) - hash + char;
-    hash = hash & hash;
-  }
-  return hash.toString(36);
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+        const char = str.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash;
+    }
+    return hash.toString(36);
 }
 
 // Check if a request is from the same Wi-Fi (internal network)
 function isLocalRequest(req) {
-  // 1. Check for proxy headers (Cloudflare, ngrok, etc.)
-  // If these exist, the request is coming via an external tunnel/proxy
-  if (
-    req.headers["x-forwarded-for"] ||
-    req.headers["x-forwarded-host"] ||
-    req.headers["x-real-ip"]
-  ) {
-    return false;
-  }
+    // 1. Check for proxy headers (Cloudflare, ngrok, etc.)
+    // If these exist, the request is coming via an external tunnel/proxy
+    if (req.headers['x-forwarded-for'] || req.headers['x-forwarded-host'] || req.headers['x-real-ip']) {
+        return false;
+    }
 
-  // 2. Check the remote IP address
-  const ip = req.ip || req.socket.remoteAddress || "";
+    // 2. Check the remote IP address
+    const ip = req.ip || req.socket.remoteAddress || '';
 
-  // Standard local/private IPv4 and IPv6 ranges
-  return (
-    ip === "127.0.0.1" ||
-    ip === "::1" ||
-    ip === "::ffff:127.0.0.1" ||
-    ip.startsWith("192.168.") ||
-    ip.startsWith("10.") ||
-    ip.startsWith("172.16.") ||
-    ip.startsWith("172.17.") ||
-    ip.startsWith("172.18.") ||
-    ip.startsWith("172.19.") ||
-    ip.startsWith("172.2") ||
-    ip.startsWith("172.3") ||
-    ip.startsWith("::ffff:192.168.") ||
-    ip.startsWith("::ffff:10.")
-  );
+    // Standard local/private IPv4 and IPv6 ranges
+    return ip === '127.0.0.1' ||
+        ip === '::1' ||
+        ip === '::ffff:127.0.0.1' ||
+        ip.startsWith('192.168.') ||
+        ip.startsWith('10.') ||
+        ip.startsWith('172.16.') || ip.startsWith('172.17.') ||
+        ip.startsWith('172.18.') || ip.startsWith('172.19.') ||
+        ip.startsWith('172.2') || ip.startsWith('172.3') ||
+        ip.startsWith('::ffff:192.168.') ||
+        ip.startsWith('::ffff:10.');
 }
 
 // Initialize CDP connection
 async function initCDP() {
-  console.log("ðŸ” Discovering Antigravity CDP endpoint...");
-  const cdpInfo = await discoverCDP();
-  console.log(`âœ… Found Antigravity on port ${cdpInfo.port} `);
+    console.log('🔍 Discovering Antigravity CDP endpoint...');
+    const cdpInfo = await discoverCDP();
+    console.log(`✅ Found Antigravity on port ${cdpInfo.port} `);
 
-  console.log("ðŸ”Œ Connecting to CDP...");
-  cdpConnection = await connectCDP(cdpInfo.url);
-  console.log(
-    `âœ… Connected! Found ${cdpConnection.contexts.length} execution contexts\n`,
-  );
+    console.log('🔌 Connecting to CDP...');
+    cdpConnection = await connectCDP(cdpInfo.url);
+    console.log(`✅ Connected! Found ${cdpConnection.contexts.length} execution contexts\n`);
 }
 
 // Background polling
 async function startPolling(wss) {
-  let lastErrorLog = 0;
-  let isConnecting = false;
+    let lastErrorLog = 0;
+    let isConnecting = false;
 
-  const poll = async () => {
-    if (
-      !cdpConnection ||
-      (cdpConnection.ws && cdpConnection.ws.readyState !== WebSocket.OPEN)
-    ) {
-      if (!isConnecting) {
-        console.log("ðŸ” Looking for Antigravity CDP connection...");
-        isConnecting = true;
-      }
-      if (cdpConnection) {
-        // Was connected, now lost
-        console.log("ðŸ”„ CDP connection lost. Attempting to reconnect...");
-        cdpConnection = null;
-      }
-      try {
-        await initCDP();
-        if (cdpConnection) {
-          console.log("âœ… CDP Connection established from polling loop");
-          isConnecting = false;
-        }
-      } catch (err) {
-        // Not found yet, just wait for next cycle
-      }
-      setTimeout(poll, 2000); // Try again in 2 seconds if not found
-      return;
-    }
-
-    try {
-      const snapshot = await captureSnapshot(cdpConnection);
-      if (snapshot && !snapshot.error) {
-        const hash = hashString(snapshot.html);
-
-        // Only update if content changed
-        if (hash !== lastSnapshotHash) {
-          lastSnapshot = snapshot;
-          lastSnapshotHash = hash;
-
-          // Broadcast to all connected clients
-          wss.clients.forEach((client) => {
-            if (client.readyState === WebSocket.OPEN) {
-              client.send(
-                JSON.stringify({
-                  type: "snapshot_update",
-                  timestamp: new Date().toISOString(),
-                }),
-              );
+    const poll = async () => {
+        if (!cdpConnection || (cdpConnection.ws && cdpConnection.ws.readyState !== WebSocket.OPEN)) {
+            if (!isConnecting) {
+                console.log('🔍 Looking for Antigravity CDP connection...');
+                isConnecting = true;
             }
-          });
-
-          console.log(`ðŸ“¸ Snapshot updated(hash: ${hash})`);
+            if (cdpConnection) {
+                // Was connected, now lost
+                console.log('🔄 CDP connection lost. Attempting to reconnect...');
+                cdpConnection = null;
+            }
+            try {
+                await initCDP();
+                if (cdpConnection) {
+                    console.log('✅ CDP Connection established from polling loop');
+                    isConnecting = false;
+                }
+            } catch (err) {
+                // Not found yet, just wait for next cycle
+            }
+            setTimeout(poll, 2000); // Try again in 2 seconds if not found
+            return;
         }
-      } else {
-        // Snapshot is null or has error
-        const now = Date.now();
-        if (!lastErrorLog || now - lastErrorLog > 10000) {
-          const errorMsg =
-            snapshot?.error || "No valid snapshot captured (check contexts)";
-          console.warn(`âš ï¸  Snapshot capture issue: ${errorMsg} `);
-          if (errorMsg.includes("container not found")) {
-            console.log(
-              "   (Tip: Ensure an active chat is open in Antigravity)",
-            );
-          }
-          if (cdpConnection.contexts.length === 0) {
-            console.log(
-              "   (Tip: No active execution contexts found. Try interacting with the Antigravity window)",
-            );
-          }
-          lastErrorLog = now;
+
+        try {
+            const snapshot = await captureSnapshot(cdpConnection);
+            if (snapshot && !snapshot.error) {
+                const hash = hashString(snapshot.html);
+
+                // Only update if content changed
+                if (hash !== lastSnapshotHash) {
+                    lastSnapshot = snapshot;
+                    lastSnapshotHash = hash;
+
+                    // Broadcast to all connected clients
+                    wss.clients.forEach(client => {
+                        if (client.readyState === WebSocket.OPEN) {
+                            client.send(JSON.stringify({
+                                type: 'snapshot_update',
+                                timestamp: new Date().toISOString()
+                            }));
+                        }
+                    });
+
+                    console.log(`📸 Snapshot updated(hash: ${hash})`);
+                }
+            } else {
+                // Snapshot is null or has error
+                const now = Date.now();
+                if (!lastErrorLog || now - lastErrorLog > 10000) {
+                    const errorMsg = snapshot?.error || 'No valid snapshot captured (check contexts)';
+                    console.warn(`⚠️  Snapshot capture issue: ${errorMsg} `);
+                    if (errorMsg.includes('container not found')) {
+                        console.log('   (Tip: Ensure an active chat is open in Antigravity)');
+                    }
+                    if (cdpConnection.contexts.length === 0) {
+                        console.log('   (Tip: No active execution contexts found. Try interacting with the Antigravity window)');
+                    }
+                    lastErrorLog = now;
+                }
+            }
+        } catch (err) {
+            console.error('Poll error:', err.message);
         }
-      }
-    } catch (err) {
-      console.error("Poll error:", err.message);
-    }
 
-    setTimeout(poll, POLL_INTERVAL);
-  };
+        setTimeout(poll, POLL_INTERVAL);
+    };
 
-  poll();
+    poll();
 }
 
 // Create Express app
 async function createServer() {
-  const app = express();
-  app.set('trust proxy', true); // Critical for ngrok/HTTPS cookies
+    const app = express();
 
-  // Check for SSL certificates
-  const keyPath = join(__dirname, "certs", "server.key");
-  const certPath = join(__dirname, "certs", "server.cert");
-  const hasSSL = fs.existsSync(keyPath) && fs.existsSync(certPath);
+    // Check for SSL certificates
+    const keyPath = join(__dirname, 'certs', 'server.key');
+    const certPath = join(__dirname, 'certs', 'server.cert');
+    const hasSSL = fs.existsSync(keyPath) && fs.existsSync(certPath);
 
-  let server;
-  let httpsServer = null;
+    let server;
+    let httpsServer = null;
 
-  if (hasSSL) {
-    const sslOptions = {
-      key: fs.readFileSync(keyPath),
-      cert: fs.readFileSync(certPath),
-    };
-    httpsServer = https.createServer(sslOptions, app);
-    server = httpsServer;
-  } else {
-    server = http.createServer(app);
-  }
-
-  const wss = new WebSocketServer({ server });
-
-  // Initialize Auth Token using a unique salt from environment
-  const authSalt = process.env.AUTH_SALT || "antigravity_default_salt_99";
-  AUTH_TOKEN = hashString(APP_PASSWORD + authSalt);
-
-  app.use(compression());
-  app.use(express.json());
-
-  // Use a secure session secret from .env if available
-  const sessionSecret =
-    process.env.SESSION_SECRET || "antigravity_secret_key_1337";
-  app.use(cookieParser(sessionSecret));
-
-  // Ngrok Bypass and Cache Control
-  app.use((req, res, next) => {
-    res.setHeader('ngrok-skip-browser-warning', 'true');
-    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-    next();
-  });
-
-  // Auth Middleware
-  app.use((req, res, next) => {
-    const path = req.path;
-    
-    // 1. PUBLIC ASSETS & SPECIAL PATHS (Always allowed)
-    // This ensures the app code can load so it can handle auth headers/persistence
-    const isPublic = path === '/login' || 
-                     path === '/login.html' || 
-                     path === '/favicon.ico' || 
-                     path === '/health' || 
-                     path === '/ssl-status' ||
-                     path.startsWith('/js/') || 
-                     path.startsWith('/css/') || 
-                     path.startsWith('/img/') ||
-                     (path.includes('.') && !isApiSubpath(path));
-
-    if (isPublic) {
-        return next();
+    if (hasSSL) {
+        const sslOptions = {
+            key: fs.readFileSync(keyPath),
+            cert: fs.readFileSync(certPath)
+        };
+        httpsServer = https.createServer(sslOptions, app);
+        server = httpsServer;
+    } else {
+        server = http.createServer(app);
     }
 
-    // Exempt local Wi-Fi devices from authentication
-    if (isLocalRequest(req)) {
-        return next();
-    }
+    const wss = new WebSocketServer({ server });
 
-    // Helper to identify API paths that should NEVER be public
-    function isApiSubpath(p) {
-        const apiPrefixes = ['/snapshot', '/instances', '/send', '/chat-history', '/app-state', '/chat-status', '/new-chat', '/remote-', '/stop'];
-        return apiPrefixes.some(prefix => p.startsWith(prefix));
-    }
+    // Initialize Auth Token using a unique salt from environment
+    const authSalt = process.env.AUTH_SALT || 'antigravity_default_salt_99';
+    AUTH_TOKEN = hashString(APP_PASSWORD + authSalt);
 
-    // Magic Link / QR Code Auto-Login (?key=... or ?token=...)
-    const urlToken = req.query.key || req.query.token;
-    if (urlToken === APP_PASSWORD) {
-        console.log(`ðŸ”‘ Magic link login - setting cookie for ${req.path}`);
-        res.cookie(AUTH_COOKIE_NAME, AUTH_TOKEN, {
-            httpOnly: true,
-            signed: true,
-            secure: true,
-            sameSite: 'none',
-            maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
-        });
-        // Do NOT redirect here. Let client app.js see the key and persist it, 
-        // then clean the URL via history.replaceState.
-        return next();
-    }
+    app.use(compression());
+    app.use(express.json());
 
-    // 1. Check for cookie token OR Bearer token (for compatibility)
-    const token = req.signedCookies[AUTH_COOKIE_NAME];
-    const authHeader = req.headers.authorization || '';
-    const bearer = authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : req.query.token || req.query.key;
-    
-    const isAuthenticated = (token === AUTH_TOKEN || bearer === APP_PASSWORD);
+    // Use a secure session secret from .env if available
+    const sessionSecret = process.env.SESSION_SECRET || 'antigravity_secret_key_1337';
+    app.use(cookieParser(sessionSecret));
 
-    if (isAuthenticated) {
-        // Bridge to cookie if needed
-        if (!token && bearer === APP_PASSWORD) {
+    // Ngrok Bypass Middleware
+    app.use((req, res, next) => {
+        // Tell ngrok to skip the "visit" warning for API requests
+        res.setHeader('ngrok-skip-browser-warning', 'true');
+        next();
+    });
+
+    // Auth Middleware
+    app.use((req, res, next) => {
+        const publicPaths = ['/login', '/login.html', '/favicon.ico'];
+        if (publicPaths.includes(req.path) || req.path.startsWith('/css/')) {
+            return next();
+        }
+
+        // Exempt local Wi-Fi devices from authentication
+        if (isLocalRequest(req)) {
+            return next();
+        }
+
+        // Magic Link / QR Code Auto-Login
+        if (req.query.key === APP_PASSWORD) {
             res.cookie(AUTH_COOKIE_NAME, AUTH_TOKEN, {
                 httpOnly: true,
                 signed: true,
-                secure: true,
-                sameSite: 'none',
-                maxAge: 365 * 24 * 60 * 60 * 1000 // 1 year
+                maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
+            });
+            // Remove the key from the URL by redirecting to the base path
+            return res.redirect('/');
+        }
+
+        const token = req.signedCookies[AUTH_COOKIE_NAME];
+        if (token === AUTH_TOKEN) {
+            return next();
+        }
+
+        // If it's an API request, return 401, otherwise redirect to login
+        if (req.xhr || req.headers.accept?.includes('json') || req.path.startsWith('/snapshot') || req.path.startsWith('/send')) {
+            res.status(401).json({ error: 'Unauthorized' });
+        } else {
+            res.redirect('/login.html');
+        }
+    });
+
+    app.use(express.static(join(__dirname, 'public')));
+
+    // Login endpoint
+    app.post('/login', (req, res) => {
+        const { password } = req.body;
+        if (password === APP_PASSWORD) {
+            res.cookie(AUTH_COOKIE_NAME, AUTH_TOKEN, {
+                httpOnly: true,
+                signed: true,
+                maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
+            });
+            res.json({ success: true });
+        } else {
+            res.status(401).json({ success: false, error: 'Invalid password' });
+        }
+    });
+
+    // Logout endpoint
+    app.post('/logout', (req, res) => {
+        res.clearCookie(AUTH_COOKIE_NAME);
+        res.json({ success: true });
+    });
+
+    // Get current snapshot
+    app.get('/snapshot', (req, res) => {
+        if (!lastSnapshot) {
+            return res.status(503).json({ error: 'No snapshot available yet' });
+        }
+        res.setHeader('Content-Type', 'application/json; charset=utf-8');
+        res.json(lastSnapshot);
+    });
+
+    // Health check endpoint
+    app.get('/health', (req, res) => {
+        res.json({
+            status: 'ok',
+            cdpConnected: cdpConnection?.ws?.readyState === 1, // WebSocket.OPEN = 1
+            uptime: process.uptime(),
+            timestamp: new Date().toISOString(),
+            https: hasSSL
+        });
+    });
+
+    // SSL status endpoint
+    app.get('/ssl-status', (req, res) => {
+        const keyPath = join(__dirname, 'certs', 'server.key');
+        const certPath = join(__dirname, 'certs', 'server.cert');
+        const certsExist = fs.existsSync(keyPath) && fs.existsSync(certPath);
+        res.json({
+            enabled: hasSSL,
+            certsExist: certsExist,
+            message: hasSSL ? 'HTTPS is active' :
+                certsExist ? 'Certificates exist, restart server to enable HTTPS' :
+                    'No certificates found'
+        });
+    });
+
+    // Generate SSL certificates endpoint
+    app.post('/generate-ssl', async (req, res) => {
+        try {
+            const { execSync } = await import('child_process');
+            execSync('node generate_ssl.js', { cwd: __dirname, stdio: 'pipe' });
+            res.json({
+                success: true,
+                message: 'SSL certificates generated! Restart the server to enable HTTPS.'
+            });
+        } catch (e) {
+            res.status(500).json({
+                success: false,
+                error: e.message
             });
         }
-        return next();
-    }
+    });
 
-    // 2. Not Authenticated - Determine response type
-    const isApi = isApiSubpath(path) || req.xhr || req.headers.accept?.includes('json');
+    // Debug UI Endpoint
+    app.get('/debug-ui', async (req, res) => {
+        if (!cdpConnection) return res.status(503).json({ error: 'CDP not connected' });
+        const uiTree = await inspectUI(cdpConnection);
+        console.log('--- UI TREE ---');
+        console.log(uiTree);
+        console.log('---------------');
+        res.type('json').send(uiTree);
+    });
 
-    if (isApi || (path.includes('.') && path !== '/')) {
-        // API or Static Asset: Return 401 (Don't redirect, as it triggers ngrok warning)
-        return res.status(401).json({ error: 'Unauthorized', code: 'AUTH_REQUIRED' });
-    } else {
-        // Page request: Redirect to login
-        console.log(`[AUTH] Redirecting page request ${path} to login`);
-        return res.redirect('/login.html');
-    }
-  });
+    // Toggle ITV
+    app.post('/toggle-itv', async (req, res) => {
+        if (!cdpConnection) return res.status(503).json({ error: 'CDP disconnected' });
+        const result = await toggleITV(cdpConnection);
+        res.json(result);
+    });
 
-  app.use(express.static(join(__dirname, 'public')));
+    // Set Mode
+    app.post('/set-mode', async (req, res) => {
+        const { mode } = req.body;
+        if (!cdpConnection) return res.status(503).json({ error: 'CDP disconnected' });
+        const result = await setMode(cdpConnection, mode);
+        res.json(result);
+    });
 
-  // Login endpoint
-  app.post('/login', (req, res) => {
-    const { password } = req.body;
-    const ua = req.headers['user-agent'] || 'unknown';
-    console.log(`Attempting login from ${req.ip || req.socket.remoteAddress} (${ua.substring(0, 30)}...)`);
-    
-    if (password === APP_PASSWORD) {
-        console.log('âœ… Login successful');
-        res.cookie(AUTH_COOKIE_NAME, AUTH_TOKEN, {
-            httpOnly: true,
-            signed: true,
-            secure: true,
-            sameSite: 'none',
-            maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
+    // Set Model
+    app.post('/set-model', async (req, res) => {
+        const { model } = req.body;
+        if (!cdpConnection) return res.status(503).json({ error: 'CDP disconnected' });
+        const result = await setModel(cdpConnection, model);
+        res.json(result);
+    });
+
+    // Stop Generation
+    app.post('/stop', async (req, res) => {
+        if (!cdpConnection) return res.status(503).json({ error: 'CDP disconnected' });
+        const result = await stopGeneration(cdpConnection);
+        res.json(result);
+    });
+
+    // Send message
+    app.post('/send', async (req, res) => {
+        const { message } = req.body;
+
+        if (!message) {
+            return res.status(400).json({ error: 'Message required' });
+        }
+
+        if (!cdpConnection) {
+            return res.status(503).json({ error: 'CDP not connected' });
+        }
+
+        const result = await injectMessage(cdpConnection, message);
+
+        // Always return 200 - the message usually goes through even if CDP reports issues
+        // The client will refresh and see if the message appeared
+        res.json({
+            success: result.ok !== false,
+            method: result.method || 'attempted',
+            details: result
         });
-        res.json({ success: true });
-    } else {
-        console.log('âŒ Login failed: Invalid password');
-        res.status(401).json({ success: false, error: 'Invalid password' });
-    }
-  });
-
-  // Logout endpoint
-  app.post('/logout', (req, res) => {
-    res.clearCookie(AUTH_COOKIE_NAME);
-    res.json({ success: true });
-  });
-
-  // Get current snapshot
-  app.get("/snapshot", (req, res) => {
-    if (!lastSnapshot) {
-      return res.status(503).json({ error: "No snapshot available yet" });
-    }
-    res.setHeader("Content-Type", "application/json; charset=utf-8");
-    res.json(lastSnapshot);
-  });
-
-  // Health check endpoint
-  app.get("/health", (req, res) => {
-    res.json({
-      status: "ok",
-      cdpConnected: cdpConnection?.ws?.readyState === 1, // WebSocket.OPEN = 1
-      uptime: process.uptime(),
-      timestamp: new Date().toISOString(),
-      https: hasSSL,
     });
-  });
 
-  // SSL status endpoint
-  app.get("/ssl-status", (req, res) => {
-    const keyPath = join(__dirname, "certs", "server.key");
-    const certPath = join(__dirname, "certs", "server.cert");
-    const certsExist = fs.existsSync(keyPath) && fs.existsSync(certPath);
-    res.json({
-      enabled: hasSSL,
-      certsExist: certsExist,
-      message: hasSSL
-        ? "HTTPS is active"
-        : certsExist
-          ? "Certificates exist, restart server to enable HTTPS"
-          : "No certificates found",
-    });
-  });
+    // UI Inspection endpoint - Returns all buttons as JSON for debugging
+    app.get('/ui-inspect', async (req, res) => {
+        if (!cdpConnection) return res.status(503).json({ error: 'CDP disconnected' });
 
-  // Generate SSL certificates endpoint
-  app.post("/generate-ssl", async (req, res) => {
-    try {
-      const { execSync } = await import("child_process");
-      execSync("node generate_ssl.js", { cwd: __dirname, stdio: "pipe" });
-      res.json({
-        success: true,
-        message:
-          "SSL certificates generated! Restart the server to enable HTTPS.",
-      });
-    } catch (e) {
-      res.status(500).json({
-        success: false,
-        error: e.message,
-      });
-    }
-  });
-
-  // Debug UI Endpoint
-  app.get("/debug-ui", async (req, res) => {
-    if (!cdpConnection)
-      return res.status(503).json({ error: "CDP not connected" });
-    const uiTree = await inspectUI(cdpConnection);
-    console.log("--- UI TREE ---");
-    console.log(uiTree);
-    console.log("---------------");
-    res.type("json").send(uiTree);
-  });
-
-  // Set Mode
-  app.post("/set-mode", async (req, res) => {
-    const { mode } = req.body;
-    if (!cdpConnection)
-      return res.status(503).json({ error: "CDP disconnected" });
-    const result = await setMode(cdpConnection, mode);
-    res.json(result);
-  });
-
-  // Set Model
-  app.post("/set-model", async (req, res) => {
-    const { model } = req.body;
-    if (!cdpConnection)
-      return res.status(503).json({ error: "CDP disconnected" });
-    const result = await setModel(cdpConnection, model);
-    res.json(result);
-  });
-
-  // Stop Generation
-  app.post("/stop", async (req, res) => {
-    if (!cdpConnection)
-      return res.status(503).json({ error: "CDP disconnected" });
-    const result = await stopGeneration(cdpConnection);
-    res.json(result);
-  });
-
-  // Toggle ITV
-  app.post("/toggle-itv", async (req, res) => {
-    if (!cdpConnection)
-      return res.status(503).json({ error: "CDP disconnected" });
-    const result = await toggleITV(cdpConnection);
-    res.json(result);
-  });
-
-  // Send message
-  app.post("/send", async (req, res) => {
-    const { message } = req.body;
-
-    if (!message) {
-      return res.status(400).json({ error: "Message required" });
-    }
-
-    if (!cdpConnection) {
-      return res.status(503).json({ error: "CDP not connected" });
-    }
-
-    const result = await injectMessage(cdpConnection, message);
-
-    // Always return 200 - the message usually goes through even if CDP reports issues
-    // The client will refresh and see if the message appeared
-    res.json({
-      success: result.ok !== false,
-      method: result.method || "attempted",
-      details: result,
-    });
-  });
-
-  // UI Inspection endpoint - Returns all buttons as JSON for debugging
-  app.get("/ui-inspect", async (req, res) => {
-    if (!cdpConnection)
-      return res.status(503).json({ error: "CDP disconnected" });
-
-    const EXP = `(() => {
+        const EXP = `(() => {
     try {
         // Safeguard for non-DOM contexts
         if (typeof window === 'undefined' || typeof document === 'undefined') {
@@ -2015,331 +1808,287 @@ async function createServer() {
     }
 })()`;
 
-    try {
-      // 1. Get Frames
-      const { frameTree } = await cdpConnection.call("Page.getFrameTree");
-      function flattenFrames(node) {
-        let list = [
-          {
-            id: node.frame.id,
-            url: node.frame.url,
-            name: node.frame.name,
-            parentId: node.frame.parentId,
-          },
-        ];
-        if (node.childFrames) {
-          for (const child of node.childFrames)
-            list = list.concat(flattenFrames(child));
-        }
-        return list;
-      }
-      const allFrames = flattenFrames(frameTree);
-
-      // 2. Map Contexts
-      const contexts = cdpConnection.contexts.map((c) => ({
-        id: c.id,
-        name: c.name,
-        origin: c.origin,
-        frameId: c.auxData ? c.auxData.frameId : null,
-        isDefault: c.auxData ? c.auxData.isDefault : false,
-      }));
-
-      // 3. Scan ALL Contexts
-      const contextResults = [];
-      for (const ctx of contexts) {
         try {
-          const result = await cdpConnection.call("Runtime.evaluate", {
-            expression: EXP,
-            returnByValue: true,
-            contextId: ctx.id,
-          });
+            // 1. Get Frames
+            const { frameTree } = await cdpConnection.call("Page.getFrameTree");
+            function flattenFrames(node) {
+                let list = [{
+                    id: node.frame.id,
+                    url: node.frame.url,
+                    name: node.frame.name,
+                    parentId: node.frame.parentId
+                }];
+                if (node.childFrames) {
+                    for (const child of node.childFrames) list = list.concat(flattenFrames(child));
+                }
+                return list;
+            }
+            const allFrames = flattenFrames(frameTree);
 
-          if (result.result?.value) {
-            const val = result.result.value;
-            contextResults.push({
-              contextId: ctx.id,
-              frameId: ctx.frameId,
-              url: val.url,
-              title: val.title,
-              hasCascade: val.hasCascade,
-              buttonCount: val.buttons.length,
-              lucideCount: val.lucideIcons.length,
-              buttons: val.buttons, // Store buttons for analysis
-              lucideIcons: val.lucideIcons,
+            // 2. Map Contexts
+            const contexts = cdpConnection.contexts.map(c => ({
+                id: c.id,
+                name: c.name,
+                origin: c.origin,
+                frameId: c.auxData ? c.auxData.frameId : null,
+                isDefault: c.auxData ? c.auxData.isDefault : false
+            }));
+
+            // 3. Scan ALL Contexts
+            const contextResults = [];
+            for (const ctx of contexts) {
+                try {
+                    const result = await cdpConnection.call("Runtime.evaluate", {
+                        expression: EXP,
+                        returnByValue: true,
+                        contextId: ctx.id
+                    });
+
+                    if (result.result?.value) {
+                        const val = result.result.value;
+                        contextResults.push({
+                            contextId: ctx.id,
+                            frameId: ctx.frameId,
+                            url: val.url,
+                            title: val.title,
+                            hasCascade: val.hasCascade,
+                            buttonCount: val.buttons.length,
+                            lucideCount: val.lucideIcons.length,
+                            buttons: val.buttons, // Store buttons for analysis
+                            lucideIcons: val.lucideIcons
+                        });
+                    } else if (result.exceptionDetails) {
+                        contextResults.push({
+                            contextId: ctx.id,
+                            frameId: ctx.frameId,
+                            error: `Script Exception: ${result.exceptionDetails.text} ${result.exceptionDetails.exception?.description || ''} `
+                        });
+                    } else {
+                        contextResults.push({
+                            contextId: ctx.id,
+                            frameId: ctx.frameId,
+                            error: 'No value returned (undefined)'
+                        });
+                    }
+                } catch (e) {
+                    contextResults.push({ contextId: ctx.id, error: e.message });
+                }
+            }
+
+            // 4. Match and Analyze
+            const cascadeFrame = allFrames.find(f => f.url.includes('cascade'));
+            const matchingContext = contextResults.find(c => c.frameId === cascadeFrame?.id);
+            const contentContext = contextResults.sort((a, b) => (b.buttonCount || 0) - (a.buttonCount || 0))[0];
+
+            // Prepare "useful buttons" from the best context
+            const bestContext = matchingContext || contentContext;
+            const usefulButtons = bestContext ? (bestContext.buttons || []).filter(b =>
+                b.ariaLabel?.includes('New Conversation') ||
+                b.title?.includes('New Conversation') ||
+                b.ariaLabel?.includes('Past Conversations') ||
+                b.title?.includes('Past Conversations') ||
+                b.ariaLabel?.includes('History')
+            ) : [];
+
+            res.json({
+                summary: {
+                    frameFound: !!cascadeFrame,
+                    cascadeFrameId: cascadeFrame?.id,
+                    contextFound: !!matchingContext,
+                    bestContextId: bestContext?.contextId
+                },
+                frames: allFrames,
+                contexts: contexts,
+                scanResults: contextResults.map(c => ({
+                    id: c.contextId,
+                    frameId: c.frameId,
+                    url: c.url,
+                    hasCascade: c.hasCascade,
+                    buttons: c.buttonCount,
+                    error: c.error
+                })),
+                usefulButtons: usefulButtons,
+                bestContextData: bestContext // Full data for the best context
             });
-          } else if (result.exceptionDetails) {
-            contextResults.push({
-              contextId: ctx.id,
-              frameId: ctx.frameId,
-              error: `Script Exception: ${result.exceptionDetails.text} ${result.exceptionDetails.exception?.description || ""} `,
-            });
-          } else {
-            contextResults.push({
-              contextId: ctx.id,
-              frameId: ctx.frameId,
-              error: "No value returned (undefined)",
-            });
-          }
+
         } catch (e) {
-          contextResults.push({ contextId: ctx.id, error: e.message });
+            res.status(500).json({ error: e.message, stack: e.stack });
         }
-      }
-
-      // 4. Match and Analyze
-      const cascadeFrame = allFrames.find((f) => f.url.includes("cascade"));
-      const matchingContext = contextResults.find(
-        (c) => c.frameId === cascadeFrame?.id,
-      );
-      const contentContext = contextResults.sort(
-        (a, b) => (b.buttonCount || 0) - (a.buttonCount || 0),
-      )[0];
-
-      // Prepare "useful buttons" from the best context
-      const bestContext = matchingContext || contentContext;
-      const usefulButtons = bestContext
-        ? (bestContext.buttons || []).filter(
-            (b) =>
-              b.ariaLabel?.includes("New Conversation") ||
-              b.title?.includes("New Conversation") ||
-              b.ariaLabel?.includes("Past Conversations") ||
-              b.title?.includes("Past Conversations") ||
-              b.ariaLabel?.includes("History"),
-          )
-        : [];
-
-      res.json({
-        summary: {
-          frameFound: !!cascadeFrame,
-          cascadeFrameId: cascadeFrame?.id,
-          contextFound: !!matchingContext,
-          bestContextId: bestContext?.contextId,
-        },
-        frames: allFrames,
-        contexts: contexts,
-        scanResults: contextResults.map((c) => ({
-          id: c.contextId,
-          frameId: c.frameId,
-          url: c.url,
-          hasCascade: c.hasCascade,
-          buttons: c.buttonCount,
-          error: c.error,
-        })),
-        usefulButtons: usefulButtons,
-        bestContextData: bestContext, // Full data for the best context
-      });
-    } catch (e) {
-      res.status(500).json({ error: e.message, stack: e.stack });
-    }
-  });
-
-  // Endpoint to list all CDP targets - helpful for debugging connection issues
-  app.get("/cdp-targets", async (req, res) => {
-    const results = {};
-    for (const port of PORTS) {
-      try {
-        const list = await getJson(`http://127.0.0.1:${port}/json/list`);
-        results[port] = list;
-      } catch (e) {
-        results[port] = e.message;
-      }
-    }
-    res.json(results);
-  });
-
-  // WebSocket connection with Auth check
-  wss.on("connection", (ws, req) => {
-    // 1. Initial check: local requests skip auth
-    if (isLocalRequest(req)) {
-      console.log("ðŸ“± Local WebSocket connection allowed");
-      return handleWS(ws);
-    }
-
-    // 2. Auth checks
-    let isAuthenticated = false;
-
-    // A. Check for signed cookie (Standard)
-    const rawCookies = req.headers.cookie || "";
-    const parsedCookies = {};
-    rawCookies.split(";").forEach((c) => {
-      const [k, v] = c.trim().split("=");
-      if (k && v) {
-        try { parsedCookies[k] = decodeURIComponent(v); }
-        catch (e) { parsedCookies[k] = v; }
-      }
     });
 
-    const signedToken = parsedCookies[AUTH_COOKIE_NAME];
-    if (signedToken) {
-      const sessionSecret = process.env.SESSION_SECRET || "antigravity_secret_key_1337";
-      const token = cookieParser.signedCookie(signedToken, sessionSecret);
-      if (token === AUTH_TOKEN) isAuthenticated = true;
-    }
+    // Endpoint to list all CDP targets - helpful for debugging connection issues
+    app.get('/cdp-targets', async (req, res) => {
+        const results = {};
+        for (const port of PORTS) {
+            try {
+                const list = await getJson(`http://127.0.0.1:${port}/json/list`);
+                results[port] = list;
+            } catch (e) {
+                results[port] = e.message;
+            }
+        }
+        res.json(results);
+    });
 
-    // B. Check for token in URL (Fallback for magic links)
-    if (!isAuthenticated) {
-        const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
-        const tokenFromUrl = url.searchParams.get("token") || url.searchParams.get("key");
-        if (tokenFromUrl === APP_PASSWORD) {
+    // WebSocket connection with Auth check
+    wss.on('connection', (ws, req) => {
+        // Parse cookies from headers
+        const rawCookies = req.headers.cookie || '';
+        const parsedCookies = {};
+        rawCookies.split(';').forEach(c => {
+            const [k, v] = c.trim().split('=');
+            if (k && v) {
+                try {
+                    parsedCookies[k] = decodeURIComponent(v);
+                } catch (e) {
+                    parsedCookies[k] = v;
+                }
+            }
+        });
+
+        // Verify signed cookie manually
+        const signedToken = parsedCookies[AUTH_COOKIE_NAME];
+        let isAuthenticated = false;
+
+        // Exempt local Wi-Fi devices from authentication
+        if (isLocalRequest(req)) {
             isAuthenticated = true;
-            console.log("ðŸ“± WebSocket authenticated via URL token");
+        } else if (signedToken) {
+            const sessionSecret = process.env.SESSION_SECRET || 'antigravity_secret_key_1337';
+            const token = cookieParser.signedCookie(signedToken, sessionSecret);
+            if (token === AUTH_TOKEN) {
+                isAuthenticated = true;
+            }
         }
-    }
 
-    if (!isAuthenticated) {
-      console.log(`ðŸš« Unauthorized WebSocket attempt from ${req.ip || req.socket.remoteAddress}`);
-      ws.send(JSON.stringify({ type: "error", message: "Unauthorized" }));
-      setTimeout(() => ws.close(), 100);
-      return;
-    }
+        if (!isAuthenticated) {
+            console.log('🚫 Unauthorized WebSocket connection attempt');
+            ws.send(JSON.stringify({ type: 'error', message: 'Unauthorized' }));
+            setTimeout(() => ws.close(), 100);
+            return;
+        }
 
-    handleWS(ws);
-  });
+        console.log('📱 Client connected (Authenticated)');
 
-  function handleWS(ws) {
-    console.log("ðŸ“± Client connected (Authenticated)");
-    ws.on("close", () => {
-      console.log("ðŸ“± Client disconnected");
+        ws.on('close', () => {
+            console.log('📱 Client disconnected');
+        });
     });
-  }
 
-  return { server, wss, app, hasSSL };
+    return { server, wss, app, hasSSL };
 }
 
 // Main
 async function main() {
-  try {
-    await initCDP();
-  } catch (err) {
-    console.warn(`âš ï¸  Initial CDP discovery failed: ${err.message}`);
-    console.log(
-      "ðŸ’¡ Start Antigravity with --remote-debugging-port=9000 to connect.",
-    );
-  }
+    try {
+        await initCDP();
+    } catch (err) {
+        console.warn(`⚠️  Initial CDP discovery failed: ${err.message}`);
+        console.log('💡 Start Antigravity with --remote-debugging-port=9000 to connect.');
+    }
 
-  try {
-    const { server, wss, app, hasSSL } = await createServer();
+    try {
+        const { server, wss, app, hasSSL } = await createServer();
 
-    // Start background polling (it will now handle reconnections)
-    startPolling(wss);
+        // Start background polling (it will now handle reconnections)
+        startPolling(wss);
 
-    // Remote Click
-    app.post("/remote-click", async (req, res) => {
-      const { selector, index, textContent } = req.body;
-      if (!cdpConnection)
-        return res.status(503).json({ error: "CDP disconnected" });
-      const result = await clickElement(cdpConnection, {
-        selector,
-        index,
-        textContent,
-      });
-      res.json(result);
-    });
-
-    // Remote Scroll - sync phone scroll to desktop
-    app.post("/remote-scroll", async (req, res) => {
-      const { scrollTop, scrollPercent } = req.body;
-      if (!cdpConnection)
-        return res.status(503).json({ error: "CDP disconnected" });
-      const result = await remoteScroll(cdpConnection, {
-        scrollTop,
-        scrollPercent,
-      });
-      res.json(result);
-    });
-
-    // Get App State
-    app.get("/app-state", async (req, res) => {
-      if (!cdpConnection)
-        return res.json({ mode: "Unknown", model: "Unknown" });
-      const result = await getAppState(cdpConnection);
-      res.json(result);
-    });
-
-    // Start New Chat
-    app.post("/new-chat", async (req, res) => {
-      if (!cdpConnection)
-        return res.status(503).json({ error: "CDP disconnected" });
-      const result = await startNewChat(cdpConnection);
-      res.json(result);
-    });
-
-    // Get Chat History
-    app.get("/chat-history", async (req, res) => {
-      if (!cdpConnection)
-        return res.json({ error: "CDP disconnected", chats: [] });
-      const result = await getChatHistory(cdpConnection);
-      res.json(result);
-    });
-
-    // Select a Chat
-    app.post("/select-chat", async (req, res) => {
-      const { title } = req.body;
-      if (!title) return res.status(400).json({ error: "Chat title required" });
-      if (!cdpConnection)
-        return res.status(503).json({ error: "CDP disconnected" });
-      const result = await selectChat(cdpConnection, title);
-      res.json(result);
-    });
-
-    // Close Chat History
-    app.post("/close-history", async (req, res) => {
-      if (!cdpConnection)
-        return res.status(503).json({ error: "CDP disconnected" });
-      const result = await closeHistory(cdpConnection);
-      res.json(result);
-    });
-
-    // Check if Chat is Open
-    app.get("/chat-status", async (req, res) => {
-      if (!cdpConnection)
-        return res.json({
-          hasChat: false,
-          hasMessages: false,
-          editorFound: false,
+        // Remote Click
+        app.post('/remote-click', async (req, res) => {
+            const { selector, index, textContent } = req.body;
+            if (!cdpConnection) return res.status(503).json({ error: 'CDP disconnected' });
+            const result = await clickElement(cdpConnection, { selector, index, textContent });
+            res.json(result);
         });
-      const result = await hasChatOpen(cdpConnection);
-      res.json(result);
-    });
 
-    // Kill any existing process on the port before starting
-    await killPortProcess(SERVER_PORT);
+        // Remote Scroll - sync phone scroll to desktop
+        app.post('/remote-scroll', async (req, res) => {
+            const { scrollTop, scrollPercent } = req.body;
+            if (!cdpConnection) return res.status(503).json({ error: 'CDP disconnected' });
+            const result = await remoteScroll(cdpConnection, { scrollTop, scrollPercent });
+            res.json(result);
+        });
 
-    // Start server
-    const localIP = getLocalIP();
-    const protocol = hasSSL ? "https" : "http";
-    server.listen(SERVER_PORT, "0.0.0.0", () => {
-      console.log(
-        `ðŸš€ Server running on ${protocol}://${localIP}:${SERVER_PORT}`,
-      );
-      if (hasSSL) {
-        console.log(
-          `ðŸ’¡ First time on phone? Accept the security warning to proceed.`,
-        );
-      }
-    });
+        // Get App State
+        app.get('/app-state', async (req, res) => {
+            if (!cdpConnection) return res.json({ mode: 'Unknown', model: 'Unknown' });
+            const result = await getAppState(cdpConnection);
+            res.json(result);
+        });
 
-    // Graceful shutdown handlers
-    const gracefulShutdown = (signal) => {
-      console.log(`\nðŸ›‘ Received ${signal}. Shutting down gracefully...`);
-      wss.close(() => {
-        console.log("   WebSocket server closed");
-      });
-      server.close(() => {
-        console.log("   HTTP server closed");
-      });
-      if (cdpConnection?.ws) {
-        cdpConnection.ws.close();
-        console.log("   CDP connection closed");
-      }
-      setTimeout(() => process.exit(0), 1000);
-    };
+        // Start New Chat
+        app.post('/new-chat', async (req, res) => {
+            if (!cdpConnection) return res.status(503).json({ error: 'CDP disconnected' });
+            const result = await startNewChat(cdpConnection);
+            res.json(result);
+        });
 
-    process.on("SIGINT", () => gracefulShutdown("SIGINT"));
-    process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
-  } catch (err) {
-    console.error("âŒ Fatal error:", err.message);
-    process.exit(1);
-  }
+        // Get Chat History
+        app.get('/chat-history', async (req, res) => {
+            if (!cdpConnection) return res.json({ error: 'CDP disconnected', chats: [] });
+            const result = await getChatHistory(cdpConnection);
+            res.json(result);
+        });
+
+        // Select a Chat
+        app.post('/select-chat', async (req, res) => {
+            const { title } = req.body;
+            if (!title) return res.status(400).json({ error: 'Chat title required' });
+            if (!cdpConnection) return res.status(503).json({ error: 'CDP disconnected' });
+            const result = await selectChat(cdpConnection, title);
+            res.json(result);
+        });
+
+        // Close Chat History
+        app.post('/close-history', async (req, res) => {
+            if (!cdpConnection) return res.status(503).json({ error: 'CDP disconnected' });
+            const result = await closeHistory(cdpConnection);
+            res.json(result);
+        });
+
+        // Check if Chat is Open
+        app.get('/chat-status', async (req, res) => {
+            if (!cdpConnection) return res.json({ hasChat: false, hasMessages: false, editorFound: false });
+            const result = await hasChatOpen(cdpConnection);
+            res.json(result);
+        });
+
+        // Kill any existing process on the port before starting
+        await killPortProcess(SERVER_PORT);
+
+        // Start server
+        const localIP = getLocalIP();
+        const protocol = hasSSL ? 'https' : 'http';
+        server.listen(SERVER_PORT, '0.0.0.0', () => {
+            console.log(`🚀 Server running on ${protocol}://${localIP}:${SERVER_PORT}`);
+            if (hasSSL) {
+                console.log(`💡 First time on phone? Accept the security warning to proceed.`);
+            }
+        });
+
+        // Graceful shutdown handlers
+        const gracefulShutdown = (signal) => {
+            console.log(`\n🛑 Received ${signal}. Shutting down gracefully...`);
+            wss.close(() => {
+                console.log('   WebSocket server closed');
+            });
+            server.close(() => {
+                console.log('   HTTP server closed');
+            });
+            if (cdpConnection?.ws) {
+                cdpConnection.ws.close();
+                console.log('   CDP connection closed');
+            }
+            setTimeout(() => process.exit(0), 1000);
+        };
+
+        process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+        process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+
+    } catch (err) {
+        console.error('❌ Fatal error:', err.message);
+        process.exit(1);
+    }
 }
 
 main();
